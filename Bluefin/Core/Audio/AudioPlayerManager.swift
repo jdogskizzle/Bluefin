@@ -43,6 +43,13 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         loadCurrentItem(autoplay: true)
     }
 
+    /// Jumps to a track already in the current queue, leaving the rest of the queue unchanged.
+    func play(at index: Int) {
+        guard queue.indices.contains(index), index != currentIndex else { return }
+        currentIndex = index
+        loadCurrentItem(autoplay: true)
+    }
+
     func togglePlayPause() {
         isPlaying ? pause() : resume()
     }

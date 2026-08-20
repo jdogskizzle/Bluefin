@@ -10,6 +10,7 @@ import SwiftUI
 
 struct NowPlayingView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
+    @State private var showQueue = false
 
     var body: some View {
         VStack(spacing: 24) {
@@ -157,7 +158,18 @@ struct NowPlayingView: View {
             #else
             utilityButton(systemImage: "airplayaudio")
             #endif
-            utilityButton(systemImage: "list.bullet")
+
+            Button {
+                showQueue = true
+            } label: {
+                Image(systemName: "list.bullet")
+                    .font(.title3)
+            }
+            .foregroundStyle(.secondary)
+            .sheet(isPresented: $showQueue) {
+                QueueView()
+            }
+
             utilityButton(systemImage: "quote.bubble")
         }
     }
