@@ -10,70 +10,54 @@ import SwiftUI
 
 struct NowPlayingView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                if let item = player.currentItem {
-                    artwork(for: item)
+        VStack(spacing: 24) {
+            if let item = player.currentItem {
+                Spacer()
 
-                    VStack(spacing: 4) {
-                        Text(item.Name)
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .multilineTextAlignment(.center)
-                        if let artist = item.AlbumArtist ?? item.Artists?.first {
-                            Text(artist)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+                artwork(for: item)
+
+                titleRow(for: item)
+
+                scrubber(for: item)
+
+                HStack(spacing: 48) {
+                    Button {
+                        player.skipToPrevious()
+                    } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.title)
                     }
-                    .padding(.horizontal)
 
-                    scrubber(for: item)
-
-                    HStack(spacing: 48) {
-                        Button {
-                            player.skipToPrevious()
-                        } label: {
-                            Image(systemName: "backward.fill")
-                                .font(.title)
-                        }
-
-                        Button {
-                            player.togglePlayPause()
-                        } label: {
-                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 44))
-                        }
-
-                        Button {
-                            player.skipToNext()
-                        } label: {
-                            Image(systemName: "forward.fill")
-                                .font(.title)
-                        }
+                    Button {
+                        player.togglePlayPause()
+                    } label: {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 44))
                     }
-                    .foregroundStyle(.primary)
 
-                    Spacer()
-                } else {
-                    Spacer()
-                    Text("Nothing Playing")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-            }
-            .padding(.top, 24)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
+                    Button {
+                        player.skipToNext()
+                    } label: {
+                        Image(systemName: "forward.fill")
+                            .font(.title)
                     }
                 }
+                .foregroundStyle(.primary)
+
+                volumeSlider
+
+                utilityButtons
+            } else {
+                Spacer()
+                Text("Nothing Playing")
+                    .foregroundStyle(.secondary)
+                Spacer()
             }
         }
+        .padding(.bottom, 24)
+        .presentationDragIndicator(.visible)
     }
 
     private func artwork(for item: BaseItemDto) -> some View {
@@ -86,6 +70,45 @@ struct NowPlayingView: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 32)
+    }
+
+    private func titleRow(for item: BaseItemDto) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.Name)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .lineLimit(2)
+                if let artist = item.AlbumArtist ?? item.Artists?.first {
+                    Text(artist)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 16) {
+                Button {
+                    // Add to playlist — designed later.
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.title3)
+                        .frame(width: 24, height: 24)
+                }
+
+                Button {
+                    // More options — designed later.
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.title3)
+                        .frame(width: 24, height: 24)
+                }
+            }
+        }
+        .foregroundStyle(.primary)
         .padding(.horizontal, 32)
     }
 
@@ -108,6 +131,40 @@ struct NowPlayingView: View {
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 32)
+    }
+
+    private var volumeSlider: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "speaker.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            #if canImport(UIKit)
+            VolumeSliderView()
+                .frame(height: 20)
+            #endif
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 32)
+    }
+
+    private var utilityButtons: some View {
+        HStack(spacing: 72) {
+            utilityButton(systemImage: "airplayaudio")
+            utilityButton(systemImage: "list.bullet")
+            utilityButton(systemImage: "quote.bubble")
+        }
+    }
+
+    private func utilityButton(systemImage: String) -> some View {
+        Button {
+            // Designed later.
+        } label: {
+            Image(systemName: systemImage)
+                .font(.title3)
+        }
+        .foregroundStyle(.secondary)
     }
 
     private func formatted(_ seconds: TimeInterval) -> String {
