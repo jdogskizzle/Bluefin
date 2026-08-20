@@ -33,33 +33,13 @@ struct LibraryListView: View {
                 ContentUnavailableView("No \(title)", systemImage: symbolForEmpty)
             } else {
                 List(viewModel.items) { item in
-                    rowOrLink(for: item)
+                    LibraryNavigableRow(item: item)
                 }
             }
         }
         .navigationTitle(title)
         .task {
             await viewModel.load()
-        }
-    }
-
-    @ViewBuilder
-    private func rowOrLink(for item: BaseItemDto) -> some View {
-        if let route = route(for: item) {
-            NavigationLink(value: route) {
-                LibraryItemRow(item: item)
-            }
-        } else {
-            LibraryItemRow(item: item)
-        }
-    }
-
-    private func route(for item: BaseItemDto) -> LibraryRoute? {
-        switch item.ItemType {
-        case "MusicArtist": return .artistAlbums(item)
-        case "MusicAlbum": return .albumSongs(item)
-        case "Playlist": return .playlistSongs(item)
-        default: return nil
         }
     }
 

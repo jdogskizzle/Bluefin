@@ -20,6 +20,7 @@ struct BaseItemDto: Codable, Identifiable, Hashable {
     let AlbumArtist: String?
     let Artists: [String]?
     let Album: String?
+    let AlbumId: String?
     let ProductionYear: Int?
     let RunTimeTicks: Int64?
     let IndexNumber: Int?
@@ -29,7 +30,7 @@ struct BaseItemDto: Codable, Identifiable, Hashable {
     var id: String { Id }
 
     enum CodingKeys: String, CodingKey {
-        case Id, Name, CollectionType, AlbumArtist, Artists, Album, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags
+        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags
         case ItemType = "Type"
     }
 }

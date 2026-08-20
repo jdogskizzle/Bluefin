@@ -236,6 +236,7 @@ class JellyfinAPIClient: ObservableObject {
         recursive: Bool = true,
         artistIds: String? = nil,
         mediaTypes: String? = nil,
+        searchTerm: String? = nil,
         sortBy: String = "SortName"
     ) async throws -> [BaseItemDto] {
         guard let userId else { throw JellyfinError.invalidResponse }
@@ -252,6 +253,9 @@ class JellyfinAPIClient: ObservableObject {
         }
         if let mediaTypes {
             queryItems.append(URLQueryItem(name: "MediaTypes", value: mediaTypes))
+        }
+        if let searchTerm, !searchTerm.isEmpty {
+            queryItems.append(URLQueryItem(name: "SearchTerm", value: searchTerm))
         }
 
         let response: ItemsResponse = try await performGet(path: "Users/\(userId)/Items", queryItems: queryItems)

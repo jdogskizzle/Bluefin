@@ -26,10 +26,7 @@ struct MainTabView: View {
                 Label("Library", systemImage: "music.note.list")
             }
 
-            NavigationStack {
-                Text("Search your library")
-                    .navigationTitle("Search")
-            }
+            SearchView()
             .tabItem {
                 Label("Search", systemImage: "magnifyingglass")
             }
