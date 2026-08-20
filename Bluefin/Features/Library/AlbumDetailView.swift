@@ -151,5 +151,6 @@ struct AlbumSongRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .contentShape(Rectangle())
     }
 }
