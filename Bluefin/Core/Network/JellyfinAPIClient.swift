@@ -271,9 +271,9 @@ class JellyfinAPIClient: ObservableObject {
         return response.Items
     }
 
-    func imageURL(itemId: String, maxWidth: Int = 400) -> URL? {
+    func imageURL(itemId: String, imageType: String = "Primary", maxWidth: Int = 400) -> URL? {
         guard let serverURL, let accessToken else { return nil }
-        var components = URLComponents(url: serverURL.appendingPathComponent("Items/\(itemId)/Images/Primary"), resolvingAgainstBaseURL: false)
+        var components = URLComponents(url: serverURL.appendingPathComponent("Items/\(itemId)/Images/\(imageType)"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
             URLQueryItem(name: "maxWidth", value: String(maxWidth)),
             URLQueryItem(name: "api_key", value: accessToken)

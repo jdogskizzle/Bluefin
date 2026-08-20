@@ -16,13 +16,15 @@ enum AlbumGridSubtitle {
 struct AlbumGridView: View {
     let title: String
     let subtitle: AlbumGridSubtitle
+    let bannerItemId: String?
     @StateObject private var viewModel: LibraryListViewModel
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
-    init(title: String, subtitle: AlbumGridSubtitle, fetch: @escaping () async throws -> [BaseItemDto]) {
+    init(title: String, subtitle: AlbumGridSubtitle, bannerItemId: String? = nil, fetch: @escaping () async throws -> [BaseItemDto]) {
         self.title = title
         self.subtitle = subtitle
+        self.bannerItemId = bannerItemId
         _viewModel = StateObject(wrappedValue: LibraryListViewModel(fetch: fetch))
     }
 
@@ -40,6 +42,9 @@ struct AlbumGridView: View {
                 ContentUnavailableView("No Albums", systemImage: "square.stack")
             } else {
                 ScrollView {
+                    if let bannerItemId {
+                        banner(itemId: bannerItemId)
+                    }
                     LazyVGrid(columns: columns, spacing: 24) {
                         ForEach(viewModel.items) { album in
                             NavigationLink(value: LibraryRoute.albumSongs(album)) {
@@ -50,12 +55,51 @@ struct AlbumGridView: View {
                     }
                     .padding()
                 }
+                .scrollIndicators(.hidden)
+                .ignoresSafeArea(edges: .top)
             }
         }
-        .navigationTitle(title)
+        .navigationTitle(bannerItemId != nil ? "" : title)
+        .navigationBarTitleDisplayMode(bannerItemId != nil ? .inline : .automatic)
+        .toolbarBackground(bannerItemId != nil ? .hidden : .automatic, for: .navigationBar)
         .task {
             await viewModel.load()
         }
+    }
+
+    @ViewBuilder
+    private func banner(itemId: String) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: itemId, imageType: "Backdrop", maxWidth: 1200)) { image in
+                image
+                    .resizable()
+                    .scaledToFit()
+            } placeholder: {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.15))
+                    .overlay {
+                        Image(systemName: "music.mic")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                    }
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .clipped()
+
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.7)],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+
+            Text(title)
+                .font(.largeTitle.bold())
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .padding()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

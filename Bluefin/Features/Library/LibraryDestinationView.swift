@@ -47,7 +47,7 @@ struct LibraryDestinationView: View {
                 )
             }
         case .artistAlbums(let artist):
-            AlbumGridView(title: artist.Name, subtitle: .year) {
+            AlbumGridView(title: artist.Name, subtitle: .year, bannerItemId: artist.Id) {
                 let albums = try await JellyfinAPIClient.shared.fetchItems(
                     parentId: apiClient.selectedLibraryId,
                     includeItemTypes: "MusicAlbum",
