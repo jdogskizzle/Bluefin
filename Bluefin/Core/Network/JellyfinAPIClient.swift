@@ -38,12 +38,14 @@ class JellyfinAPIClient: ObservableObject {
     @Published var accessToken: String?
     @Published var userId: String?
     @Published var isAuthorized: Bool = false
-    
+    @Published var selectedLibraryId: String?
+
     private let clientName = "Bluefin"
     private let deviceName = "iOS Device"
     private let deviceId = "BluefinDevice123"
     private let version = "1.0.0"
-    
+    private let selectedLibraryDefaultsKey = "selectedLibraryId"
+
     private init() {
         loadCredentials()
     }
@@ -83,17 +85,29 @@ class JellyfinAPIClient: ObservableObject {
         self.accessToken = token
         self.userId = storedUserId
         self.isAuthorized = true
+        self.selectedLibraryId = UserDefaults.standard.string(forKey: selectedLibraryDefaultsKey)
     }
-    
+
     func logout() {
         self.serverURL = nil
         self.accessToken = nil
         self.userId = nil
         self.isAuthorized = false
-        
+        self.selectedLibraryId = nil
+
         KeychainHelper.shared.delete(service: "com.bluefin.app", account: "server_url")
         KeychainHelper.shared.delete(service: "com.bluefin.app", account: "access_token")
         KeychainHelper.shared.delete(service: "com.bluefin.app", account: "user_id")
+        UserDefaults.standard.removeObject(forKey: selectedLibraryDefaultsKey)
+    }
+
+    func setSelectedLibrary(_ id: String?) {
+        selectedLibraryId = id
+        if let id {
+            UserDefaults.standard.set(id, forKey: selectedLibraryDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: selectedLibraryDefaultsKey)
+        }
     }
     
     func checkServerConnection(url: URL) async throws -> String {
@@ -180,5 +194,86 @@ class JellyfinAPIClient: ObservableObject {
         } catch {
             throw JellyfinError.connectionFailed(error.localizedDescription)
         }
+    }
+
+    private func performGet<T: Decodable>(path: String, queryItems: [URLQueryItem] = []) async throws -> T {
+        guard let serverURL else { throw JellyfinError.invalidURL }
+        guard var components = URLComponents(url: serverURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
+            throw JellyfinError.invalidURL
+        }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let url = components.url else {
+            throw JellyfinError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw JellyfinError.invalidResponse
+        }
+
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw JellyfinError.decodingFailed
+        }
+    }
+
+    func fetchLibraries() async throws -> [BaseItemDto] {
+        guard let userId else { throw JellyfinError.invalidResponse }
+        let response: ItemsResponse = try await performGet(path: "Users/\(userId)/Views")
+        return response.Items
+    }
+
+    func fetchItems(
+        parentId: String? = nil,
+        includeItemTypes: String,
+        recursive: Bool = true,
+        artistIds: String? = nil,
+        mediaTypes: String? = nil,
+        sortBy: String = "SortName"
+    ) async throws -> [BaseItemDto] {
+        guard let userId else { throw JellyfinError.invalidResponse }
+        var queryItems = [
+            URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes),
+            URLQueryItem(name: "Recursive", value: String(recursive)),
+            URLQueryItem(name: "SortBy", value: sortBy)
+        ]
+        if let parentId {
+            queryItems.append(URLQueryItem(name: "ParentId", value: parentId))
+        }
+        if let artistIds {
+            queryItems.append(URLQueryItem(name: "ArtistIds", value: artistIds))
+        }
+        if let mediaTypes {
+            queryItems.append(URLQueryItem(name: "MediaTypes", value: mediaTypes))
+        }
+
+        let response: ItemsResponse = try await performGet(path: "Users/\(userId)/Items", queryItems: queryItems)
+        return response.Items
+    }
+
+    func fetchPlaylistItems(playlistId: String) async throws -> [BaseItemDto] {
+        guard let userId else { throw JellyfinError.invalidResponse }
+        let response: ItemsResponse = try await performGet(
+            path: "Playlists/\(playlistId)/Items",
+            queryItems: [URLQueryItem(name: "userId", value: userId)]
+        )
+        return response.Items
+    }
+
+    func imageURL(itemId: String, maxWidth: Int = 400) -> URL? {
+        guard let serverURL, let accessToken else { return nil }
+        var components = URLComponents(url: serverURL.appendingPathComponent("Items/\(itemId)/Images/Primary"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "maxWidth", value: String(maxWidth)),
+            URLQueryItem(name: "api_key", value: accessToken)
+        ]
+        return components?.url
     }
 }

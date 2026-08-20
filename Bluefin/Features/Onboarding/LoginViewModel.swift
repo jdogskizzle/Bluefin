@@ -20,7 +20,7 @@ class LoginViewModel: ObservableObject {
     
     private let apiClient: JellyfinAPIClient
     
-    init(apiClient: JellyfinAPIClient = .shared) {
+    init(apiClient: JellyfinAPIClient) {
         self.apiClient = apiClient
     }
     

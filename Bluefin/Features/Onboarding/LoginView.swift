@@ -9,7 +9,7 @@ import SwiftUI
 import Combine
 
 struct LoginView: View {
-    @StateObject private var viewModel = LoginViewModel()
+    @StateObject private var viewModel = LoginViewModel(apiClient: .shared)
     
     var body: some View {
         NavigationView {
