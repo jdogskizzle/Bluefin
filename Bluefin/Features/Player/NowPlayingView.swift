@@ -151,7 +151,12 @@ struct NowPlayingView: View {
 
     private var utilityButtons: some View {
         HStack(spacing: 72) {
+            #if canImport(UIKit)
+            RoutePickerView()
+                .frame(width: 24, height: 24)
+            #else
             utilityButton(systemImage: "airplayaudio")
+            #endif
             utilityButton(systemImage: "list.bullet")
             utilityButton(systemImage: "quote.bubble")
         }
