@@ -10,6 +10,8 @@ import SwiftData
 
 @main
 struct BluefinApp: App {
+    @StateObject private var apiClient = JellyfinAPIClient.shared
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -25,8 +27,17 @@ struct BluefinApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if apiClient.isAuthorized {
+                    MainTabView()
+                } else {
+                    LoginView()
+                }
+            }
+            .environmentObject(apiClient)
+            .animation(.default, value: apiClient.isAuthorized)
         }
         .modelContainer(sharedModelContainer)
     }
 }
+
