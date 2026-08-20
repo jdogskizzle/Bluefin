@@ -10,36 +10,42 @@ import SwiftUI
 
 struct MainTabView: View {
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
-    
+    @ObservedObject private var player = AudioPlayerManager.shared
+
     var body: some View {
-        TabView {
-            NavigationStack {
-                Text("Welcome to Bluefin")
-                    .navigationTitle("Home")
-            }
-            .tabItem {
-                Label("Home", systemImage: "house")
+        ZStack(alignment: .bottom) {
+            TabView {
+                NavigationStack {
+                    Text("Welcome to Bluefin")
+                        .navigationTitle("Home")
+                }
+                .tabItem {
+                    Label("Home", systemImage: "house")
+                }
+
+                LibraryView()
+                .tabItem {
+                    Label("Library", systemImage: "music.note.list")
+                }
+
+                SearchView()
+                .tabItem {
+                    Label("Search", systemImage: "magnifyingglass")
+                }
+
+                NavigationStack {
+                    SettingsView()
+                }
+                .tabItem {
+                    Label("Settings", systemImage: "gearshape")
+                }
             }
 
-            LibraryView()
-            .tabItem {
-                Label("Library", systemImage: "music.note.list")
+            if player.currentItem != nil {
+                MiniPlayerView()
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, MiniPlayerView.tabBarGap)
             }
-
-            SearchView()
-            .tabItem {
-                Label("Search", systemImage: "magnifyingglass")
-            }
-
-            NavigationStack {
-                SettingsView()
-            }
-            .tabItem {
-                Label("Settings", systemImage: "gearshape")
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            MiniPlayerView()
         }
     }
 }

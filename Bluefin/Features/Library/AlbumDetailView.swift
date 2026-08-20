@@ -61,6 +61,7 @@ struct AlbumDetailView: View {
                     }
                 }
                 .listStyle(.plain)
+                .avoidsMiniPlayer()
             }
         }
         .navigationTitle("")
