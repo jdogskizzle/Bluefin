@@ -82,7 +82,11 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     }
 
     func seek(to time: TimeInterval) {
-        player.seek(to: CMTime(seconds: time, preferredTimescale: 1000))
+        // A small tolerance lets AVPlayer land on the nearest convenient keyframe instead of doing a
+        // fully precise decode — lyric lines are seconds apart, so this is imperceptibly close while
+        // avoiding the audible restart gap a zero-tolerance seek introduces.
+        let tolerance = CMTime(seconds: 0.2, preferredTimescale: 1000)
+        player.seek(to: CMTime(seconds: time, preferredTimescale: 1000), toleranceBefore: tolerance, toleranceAfter: tolerance)
         currentTime = time
         updateNowPlayingElapsedTime()
     }

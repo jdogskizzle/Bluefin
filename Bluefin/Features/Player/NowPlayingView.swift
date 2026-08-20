@@ -11,6 +11,8 @@ import SwiftUI
 struct NowPlayingView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
     @State private var showQueue = false
+    @State private var showLyrics = false
+    @State private var hasLyrics = false
 
     var body: some View {
         VStack(spacing: 24) {
@@ -59,6 +61,18 @@ struct NowPlayingView: View {
         }
         .padding(.bottom, 24)
         .presentationDragIndicator(.visible)
+        .task(id: player.currentItem?.Id) {
+            await checkLyricsAvailability()
+        }
+    }
+
+    private func checkLyricsAvailability() async {
+        guard let itemId = player.currentItem?.Id else {
+            hasLyrics = false
+            return
+        }
+        let lines = (try? await JellyfinAPIClient.shared.fetchLyrics(itemId: itemId)) ?? []
+        hasLyrics = !lines.isEmpty
     }
 
     private func artwork(for item: BaseItemDto) -> some View {
@@ -170,7 +184,17 @@ struct NowPlayingView: View {
                 QueueView()
             }
 
-            utilityButton(systemImage: "quote.bubble")
+            Button {
+                showLyrics = true
+            } label: {
+                Image(systemName: "quote.bubble")
+                    .font(.title3)
+            }
+            .foregroundStyle(hasLyrics ? Color.secondary : Color.secondary.opacity(0.3))
+            .disabled(!hasLyrics)
+            .sheet(isPresented: $showLyrics) {
+                LyricsView()
+            }
         }
     }
 

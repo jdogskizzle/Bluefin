@@ -271,6 +271,11 @@ class JellyfinAPIClient: ObservableObject {
         return response.Items
     }
 
+    func fetchLyrics(itemId: String) async throws -> [LyricLine] {
+        let response: LyricsResponse = try await performGet(path: "Audio/\(itemId)/Lyrics")
+        return response.Lyrics
+    }
+
     func imageURL(itemId: String, imageType: String = "Primary", maxWidth: Int = 400) -> URL? {
         guard let serverURL, let accessToken else { return nil }
         var components = URLComponents(url: serverURL.appendingPathComponent("Items/\(itemId)/Images/\(imageType)"), resolvingAgainstBaseURL: false)
