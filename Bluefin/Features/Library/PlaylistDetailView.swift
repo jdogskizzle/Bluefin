@@ -1,5 +1,5 @@
 //
-//  AlbumDetailView.swift
+//  PlaylistDetailView.swift
 //  Bluefin
 //
 //  Created by Jacob Marcuson on 8/19/26.
@@ -8,19 +8,14 @@
 import Combine
 import SwiftUI
 
-struct AlbumDetailView: View {
-    let album: BaseItemDto
+struct PlaylistDetailView: View {
+    let playlist: BaseItemDto
     @StateObject private var viewModel: LibraryListViewModel
 
-    init(album: BaseItemDto) {
-        self.album = album
+    init(playlist: BaseItemDto) {
+        self.playlist = playlist
         _viewModel = StateObject(wrappedValue: LibraryListViewModel {
-            try await JellyfinAPIClient.shared.fetchItems(
-                parentId: album.Id,
-                includeItemTypes: "Audio",
-                recursive: false,
-                sortBy: "IndexNumber"
-            )
+            try await JellyfinAPIClient.shared.fetchPlaylistItems(playlistId: playlist.Id)
         })
     }
 
@@ -30,10 +25,12 @@ struct AlbumDetailView: View {
                 ProgressView()
             } else if let error = viewModel.errorMessage {
                 ContentUnavailableView(
-                    "Couldn't Load Album",
+                    "Couldn't Load Playlist",
                     systemImage: "exclamationmark.triangle",
                     description: Text(error)
                 )
+            } else if viewModel.items.isEmpty {
+                ContentUnavailableView("No Songs", systemImage: "music.note.list")
             } else {
                 List {
                     Section {
@@ -47,16 +44,10 @@ struct AlbumDetailView: View {
                             Button {
                                 AudioPlayerManager.shared.play(queue: viewModel.items, startAt: index)
                             } label: {
-                                NumberedSongRow(song: song, position: index + 1)
+                                NumberedSongRow(song: song, position: index + 1, showsArtwork: true)
                             }
                             .buttonStyle(.plain)
                         }
-                    }
-
-                    Section {
-                        footer
-                            .listRowInsets(EdgeInsets())
-                            .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.plain)
@@ -72,12 +63,12 @@ struct AlbumDetailView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: album.Id, maxWidth: 600)) { image in
+            AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: playlist.Id, maxWidth: 600)) { image in
                 image.resizable().aspectRatio(contentMode: .fill)
             } placeholder: {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.secondary.opacity(0.15))
-                    .overlay(Image(systemName: "square.stack").font(.largeTitle).foregroundStyle(.secondary))
+                    .overlay(Image(systemName: "music.note.list").font(.largeTitle).foregroundStyle(.secondary))
             }
             .aspectRatio(1, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -85,15 +76,13 @@ struct AlbumDetailView: View {
             .padding(.horizontal, 32)
 
             VStack(spacing: 2) {
-                Text(album.Name)
+                Text(playlist.Name)
                     .font(.title2)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)
-                if let artist = album.AlbumArtist {
-                    Text(artist)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                Text("\(viewModel.items.count) songs")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal)
 
@@ -103,32 +92,5 @@ struct AlbumDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-    }
-
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let year = album.ProductionYear {
-                Text(String(year))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            Text(summaryText)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-    }
-
-    private var summaryText: String {
-        let count = viewModel.items.count
-        let songLabel = count == 1 ? "song" : "songs"
-        let totalTicks = viewModel.items.compactMap { $0.RunTimeTicks }.reduce(0, +)
-        let totalSeconds = Int(totalTicks / 10_000_000)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let durationText = hours > 0 ? "\(hours) hr \(minutes) min" : "\(minutes) min"
-        return "\(count) \(songLabel), \(durationText)"
     }
 }

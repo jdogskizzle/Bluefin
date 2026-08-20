@@ -59,9 +59,7 @@ struct LibraryDestinationView: View {
         case .albumSongs(let album):
             AlbumDetailView(album: album)
         case .playlistSongs(let playlist):
-            LibraryListView(title: playlist.Name, itemType: .song) {
-                try await JellyfinAPIClient.shared.fetchPlaylistItems(playlistId: playlist.Id)
-            }
+            PlaylistDetailView(playlist: playlist)
         }
     }
 }
