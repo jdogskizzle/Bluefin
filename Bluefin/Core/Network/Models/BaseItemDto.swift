@@ -43,4 +43,13 @@ extension BaseItemDto {
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+
+    /// The item id to request artwork for — songs have no art of their own, so this
+    /// resolves to their album's art instead.
+    var artworkItemId: String {
+        if ItemType == "Audio", let albumId = AlbumId {
+            return albumId
+        }
+        return Id
+    }
 }

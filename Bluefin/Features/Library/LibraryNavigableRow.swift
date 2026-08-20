@@ -9,12 +9,18 @@ import SwiftUI
 
 struct LibraryNavigableRow: View {
     let item: BaseItemDto
+    var onPlaySong: (() -> Void)? = nil
 
     var body: some View {
         if let route = LibraryNavigableRow.route(for: item) {
             NavigationLink(value: route) {
                 LibraryItemRow(item: item)
             }
+        } else if item.ItemType == "Audio", let onPlaySong {
+            Button(action: onPlaySong) {
+                LibraryItemRow(item: item)
+            }
+            .buttonStyle(.plain)
         } else {
             LibraryItemRow(item: item)
         }

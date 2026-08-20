@@ -280,4 +280,14 @@ class JellyfinAPIClient: ObservableObject {
         ]
         return components?.url
     }
+
+    func streamURL(itemId: String) -> URL? {
+        guard let serverURL, let accessToken else { return nil }
+        var components = URLComponents(url: serverURL.appendingPathComponent("Audio/\(itemId)/stream"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "static", value: "true"),
+            URLQueryItem(name: "api_key", value: accessToken)
+        ]
+        return components?.url
+    }
 }

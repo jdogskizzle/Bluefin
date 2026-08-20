@@ -30,7 +30,7 @@ struct LibraryItemRow: View {
 
     @ViewBuilder
     private var artwork: some View {
-        let url = JellyfinAPIClient.shared.imageURL(itemId: artworkItemId, maxWidth: 100)
+        let url = JellyfinAPIClient.shared.imageURL(itemId: item.artworkItemId, maxWidth: 100)
         Group {
             switch item.ItemType {
             case "MusicArtist":
@@ -52,13 +52,6 @@ struct LibraryItemRow: View {
             }
         }
         .frame(width: 44, height: 44)
-    }
-
-    private var artworkItemId: String {
-        if item.ItemType == "Audio", let albumId = item.AlbumId {
-            return albumId
-        }
-        return item.Id
     }
 
     private var fallbackSymbol: String {

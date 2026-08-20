@@ -33,7 +33,10 @@ struct LibraryListView: View {
                 ContentUnavailableView("No \(title)", systemImage: symbolForEmpty)
             } else {
                 List(viewModel.items) { item in
-                    LibraryNavigableRow(item: item)
+                    LibraryNavigableRow(item: item) {
+                        let index = viewModel.items.firstIndex(of: item) ?? 0
+                        AudioPlayerManager.shared.play(queue: viewModel.items, startAt: index)
+                    }
                 }
             }
         }

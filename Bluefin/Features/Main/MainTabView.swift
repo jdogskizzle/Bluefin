@@ -38,6 +38,9 @@ struct MainTabView: View {
                 Label("Settings", systemImage: "gearshape")
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            MiniPlayerView()
+        }
     }
 }
 

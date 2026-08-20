@@ -44,7 +44,13 @@ struct AlbumDetailView: View {
 
                     Section {
                         ForEach(viewModel.items) { song in
-                            AlbumSongRow(song: song)
+                            Button {
+                                let index = viewModel.items.firstIndex(of: song) ?? 0
+                                AudioPlayerManager.shared.play(queue: viewModel.items, startAt: index)
+                            } label: {
+                                AlbumSongRow(song: song)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
 

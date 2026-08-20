@@ -52,7 +52,10 @@ struct SearchView: View {
                         if !viewModel.songs.isEmpty {
                             Section("Songs") {
                                 ForEach(viewModel.songs) { item in
-                                    LibraryNavigableRow(item: item)
+                                    LibraryNavigableRow(item: item) {
+                                        let index = viewModel.songs.firstIndex(of: item) ?? 0
+                                        AudioPlayerManager.shared.play(queue: viewModel.songs, startAt: index)
+                                    }
                                 }
                             }
                         }
