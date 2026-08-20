@@ -14,7 +14,7 @@ struct LibraryItemRow: View {
         HStack(spacing: 12) {
             artwork
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(item.Name)
                     .font(.body)
                     .lineLimit(1)
                 if let subtitle {
@@ -71,33 +71,17 @@ struct LibraryItemRow: View {
         }
     }
 
-    private var title: String {
-        if item.ItemType == "Audio" {
-            let track = item.IndexNumber.map(String.init) ?? "–"
-            return "\(track). \(item.Name)"
-        }
-        return item.Name
-    }
-
     private var subtitle: String? {
         switch item.ItemType {
         case "MusicAlbum":
             let parts = [item.AlbumArtist, item.ProductionYear.map(String.init)].compactMap { $0 }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         case "Audio":
-            return formattedDuration(ticks: item.RunTimeTicks)
+            return item.formattedDuration
         case "Playlist":
             return "\(item.ChildCount ?? 0) songs"
         default:
             return nil
         }
-    }
-
-    private func formattedDuration(ticks: Int64?) -> String? {
-        guard let ticks else { return nil }
-        let totalSeconds = Int(ticks / 10_000_000)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }

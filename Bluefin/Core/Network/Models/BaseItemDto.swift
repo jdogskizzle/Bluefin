@@ -34,3 +34,13 @@ struct BaseItemDto: Codable, Identifiable, Hashable {
         case ItemType = "Type"
     }
 }
+
+extension BaseItemDto {
+    var formattedDuration: String? {
+        guard let ticks = RunTimeTicks else { return nil }
+        let totalSeconds = Int(ticks / 10_000_000)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}

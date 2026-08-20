@@ -9,7 +9,7 @@ import Combine
 import Foundation
 
 enum LibraryItemKind {
-    case artist, album, song, playlist
+    case song, playlist
 }
 
 @MainActor

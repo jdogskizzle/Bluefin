@@ -45,8 +45,6 @@ struct LibraryListView: View {
 
     private var symbolForEmpty: String {
         switch itemType {
-        case .artist: return "music.mic"
-        case .album: return "square.stack"
         case .song: return "music.note"
         case .playlist: return "music.note.list"
         }

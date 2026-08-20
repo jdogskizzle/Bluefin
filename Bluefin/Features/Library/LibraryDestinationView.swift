@@ -12,17 +12,21 @@ struct LibraryDestinationView: View {
     let route: LibraryRoute
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
 
+    /// Albums crediting more contributing artists than this are treated as "various artists"
+    /// compilations and excluded from an individual artist's album grid.
+    private let variousArtistsThreshold = 10
+
     var body: some View {
         switch route {
         case .artists:
-            LibraryListView(title: "Artists", itemType: .artist) {
+            ArtistListView {
                 try await JellyfinAPIClient.shared.fetchItems(
                     parentId: apiClient.selectedLibraryId,
                     includeItemTypes: "MusicArtist"
                 )
             }
         case .albums:
-            LibraryListView(title: "Albums", itemType: .album) {
+            AlbumGridView(title: "Albums", subtitle: .artist) {
                 try await JellyfinAPIClient.shared.fetchItems(
                     parentId: apiClient.selectedLibraryId,
                     includeItemTypes: "MusicAlbum"
@@ -43,22 +47,17 @@ struct LibraryDestinationView: View {
                 )
             }
         case .artistAlbums(let artist):
-            LibraryListView(title: artist.Name, itemType: .album) {
-                try await JellyfinAPIClient.shared.fetchItems(
+            AlbumGridView(title: artist.Name, subtitle: .year) {
+                let albums = try await JellyfinAPIClient.shared.fetchItems(
                     parentId: apiClient.selectedLibraryId,
                     includeItemTypes: "MusicAlbum",
-                    artistIds: artist.Id
+                    artistIds: artist.Id,
+                    sortBy: "PremiereDate"
                 )
+                return albums.filter { ($0.Artists?.count ?? 0) <= variousArtistsThreshold }
             }
         case .albumSongs(let album):
-            LibraryListView(title: album.Name, itemType: .song) {
-                try await JellyfinAPIClient.shared.fetchItems(
-                    parentId: album.Id,
-                    includeItemTypes: "Audio",
-                    recursive: false,
-                    sortBy: "IndexNumber"
-                )
-            }
+            AlbumDetailView(album: album)
         case .playlistSongs(let playlist):
             LibraryListView(title: playlist.Name, itemType: .song) {
                 try await JellyfinAPIClient.shared.fetchPlaylistItems(playlistId: playlist.Id)
