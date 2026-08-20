@@ -5,10 +5,16 @@
 //  Created by Jacob Marcuson on 8/19/26.
 //
 
+import Combine
 import SwiftUI
 
 struct LibraryItemRow: View {
     let item: BaseItemDto
+    @ObservedObject private var player = AudioPlayerManager.shared
+
+    private var isNowPlaying: Bool {
+        item.ItemType == "Audio" && player.currentItem?.Id == item.Id
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -16,11 +22,12 @@ struct LibraryItemRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.Name)
                     .font(.body)
+                    .foregroundStyle(isNowPlaying ? Color.accentColor : Color.primary)
                     .lineLimit(1)
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isNowPlaying ? Color.accentColor : Color.secondary)
                         .lineLimit(1)
                 }
             }

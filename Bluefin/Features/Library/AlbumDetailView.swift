@@ -132,16 +132,29 @@ struct AlbumDetailView: View {
 
 struct AlbumSongRow: View {
     let song: BaseItemDto
+    @ObservedObject private var player = AudioPlayerManager.shared
+
+    private var isNowPlaying: Bool {
+        player.currentItem?.Id == song.Id
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(song.IndexNumber.map(String.init) ?? "–")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(width: 20, alignment: .leading)
+            Group {
+                if isNowPlaying {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.caption)
+                } else {
+                    Text(song.IndexNumber.map(String.init) ?? "–")
+                        .font(.subheadline)
+                }
+            }
+            .foregroundStyle(isNowPlaying ? Color.accentColor : Color.secondary)
+            .frame(width: 20, alignment: .leading)
 
             Text(song.Name)
                 .font(.body)
+                .foregroundStyle(isNowPlaying ? Color.accentColor : Color.primary)
                 .lineLimit(1)
 
             Spacer()
@@ -149,7 +162,7 @@ struct AlbumSongRow: View {
             if let duration = song.formattedDuration {
                 Text(duration)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isNowPlaying ? Color.accentColor : Color.secondary)
             }
         }
         .contentShape(Rectangle())
