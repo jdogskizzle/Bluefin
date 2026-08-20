@@ -48,3 +48,6 @@ fastlane/test_output/
 .env
 .env.*
 !.env.example
+
+# IDE
+.vscode/*
