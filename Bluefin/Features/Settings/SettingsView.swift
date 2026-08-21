@@ -42,6 +42,31 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Storage") {
+                HStack {
+                    Text("Cached Audio")
+                    Spacer()
+                    Text(viewModel.formattedCacheSize)
+                        .foregroundStyle(.secondary)
+                }
+                Picker("Cache Limit", selection: $viewModel.cacheLimitBytes) {
+                    Text("1 GB").tag(Int64(1_000_000_000))
+                    Text("2 GB").tag(Int64(2_000_000_000))
+                    Text("5 GB").tag(Int64(5_000_000_000))
+                    Text("10 GB").tag(Int64(10_000_000_000))
+                }
+                Picker("Pre-cache Ahead", selection: $viewModel.preCacheLookahead) {
+                    Text("5 tracks").tag(5)
+                    Text("10 tracks").tag(10)
+                    Text("15 tracks").tag(15)
+                    Text("20 tracks").tag(20)
+                }
+                Button("Clear Cache", role: .destructive) {
+                    Task { await viewModel.clearCache() }
+                }
+                .disabled(viewModel.isClearingCache || viewModel.cacheSizeBytes == 0)
+            }
+
             Section("Account") {
                 if let serverURL = apiClient.serverURL {
                     HStack {
@@ -60,6 +85,7 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .task {
             await viewModel.loadLibraries()
+            await viewModel.refreshCacheSize()
         }
     }
 }

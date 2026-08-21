@@ -15,8 +15,8 @@ Status as of 2026-08-20, verified against the current codebase (not just prior p
 - [x] `AudioPlayerManager` singleton on `AVQueuePlayer` (`Core/Audio/AudioPlayerManager.swift`)
 - [x] Lock screen / Control Center integration (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`)
 - [x] AirPlay / route picker (`Player/RoutePickerView.swift`), volume slider (`Player/VolumeSliderView.swift`)
-- [ ] Background audio session caching layer — no `AVAssetResourceLoaderDelegate`, no disk caching of streamed audio yet. Playback currently streams directly with no cache-ahead.
-- [ ] Pre-caching of upcoming tracks/album — not implemented.
+- [x] Background disk caching (`Core/Storage/CacheManager.swift`, a `@ModelActor` backed by `CachedTrack`): plays from a cached local file when present, otherwise streams directly and downloads the file in the background for next time. Uses whole-file background download rather than an `AVAssetResourceLoaderDelegate` byte-stream intercept — simpler and more robust, at the cost of ~2x bandwidth on an uncached track's first play (streamed for immediate playback + downloaded for the cache in parallel). Worth revisiting with a resource-loader delegate later if that bandwidth cost matters.
+- [x] Pre-caching upcoming queue tracks — `AudioPlayerManager` kicks off background cache downloads for the next N queue items whenever the current track loads; N is `CacheManager.preCacheLookahead`, configurable in Settings (default 10).
 
 ## Phase 3: Main UI Architecture — partially done
 - [x] Tab navigation shell (`Main/MainTabView.swift`): Home, Library, Search, Settings
@@ -24,7 +24,8 @@ Status as of 2026-08-20, verified against the current codebase (not just prior p
 - [x] Search view (`Search/SearchView.swift`, `SearchViewModel.swift`)
 - [x] Settings: music library selector, server info, sign out
 - [ ] Home view — currently just a placeholder ("Welcome to Bluefin"). Needs: pinned playlists, recently played, random suggestions, "Listen List"
-- [ ] Settings: stream quality selector, cache limit controls, equalizer toggles — none exist yet
+- [x] Settings: cache limit controls (`Storage` section — usage display, 5/10/15/20 GB size limit picker, 1/2/3/5-track pre-cache lookahead picker, Clear Cache)
+- [ ] Settings: stream quality selector, equalizer toggles — none exist yet
 
 ## Phase 4: Advanced UX & Gestures — mostly not started
 - [x] Expandable large player (`Player/NowPlayingView.swift`), mini-player (`Player/MiniPlayerView.swift`)
@@ -36,18 +37,10 @@ Status as of 2026-08-20, verified against the current codebase (not just prior p
 
 ## Phase 5: Equalizer & Offline Engine — not started
 - [ ] Custom EQ (`AVAudioUnitEQ`) in the playback pipeline
-- [ ] Track downloading for offline playlists
-- [ ] Offline fallback (local SwiftData + downloaded files when no connectivity)
-- [ ] Cache size limit + LRU eviction
+- [ ] Explicit "download for offline" on playlists/albums (distinct from the passive play-time cache above — this would eagerly download a whole playlist regardless of play history)
+- [ ] Offline fallback (local SwiftData + downloaded files when no connectivity) — `CacheManager` gives playback a local-file path when cached, but nothing yet detects offline state or falls back to cached-only browsing when Library/Search calls fail
+- [x] Cache size limit + LRU eviction (`CacheManager.evictIfOverLimit`, oldest-`lastAccessedDate`-first, limit configurable in Settings)
 
-## Not in original plan, worth deciding on
+## Later
 - [ ] WebSocket sync for real-time playback reporting (progress/play count back to Jellyfin) — API client currently has no WebSocket usage
 - [ ] "Listen List" persistence (needs SwiftData model above)
-
----
-
-## Suggested near-term priorities
-1. **SwiftData models** (`CachedTrack`, `ListeningListAlbum`, session storage) — this unblocks Home view content, offline mode, and downloads; everything else in Phase 5 depends on it.
-2. **Home view** — biggest visible gap; currently a placeholder despite Library/Player being fairly built out.
-3. **Audio caching / pre-caching** — needed before offline or download features make sense.
-4. **Queue drag-to-reorder** — small, high-value polish on an already-built `QueueView`.

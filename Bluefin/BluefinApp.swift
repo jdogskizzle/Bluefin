@@ -11,20 +11,6 @@ import SwiftData
 @main
 struct BluefinApp: App {
     @StateObject private var apiClient = JellyfinAPIClient.shared
-    
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            CachedTrack.self,
-            ListeningListAlbum.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
 
     var body: some Scene {
         WindowGroup {
@@ -38,7 +24,7 @@ struct BluefinApp: App {
             .environmentObject(apiClient)
             .animation(.default, value: apiClient.isAuthorized)
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(Persistence.shared)
     }
 }
 

@@ -92,18 +92,63 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     }
 
     private func loadCurrentItem(autoplay: Bool) {
-        guard let item = currentItem, let url = JellyfinAPIClient.shared.streamURL(itemId: item.Id) else { return }
+        guard let item = currentItem else { return }
         removeEndObserver()
-
-        let playerItem = AVPlayerItem(url: url)
-        player.replaceCurrentItem(with: playerItem)
         currentTime = 0
-        addEndObserver(for: playerItem)
         updateNowPlayingInfo()
 
-        if autoplay {
-            player.play()
-            isPlaying = true
+        Task {
+            guard let url = await playbackURL(for: item) else { return }
+            // The user may have skipped again while this awaited — don't clobber newer state.
+            guard item.Id == self.currentItem?.Id else { return }
+
+            let playerItem = AVPlayerItem(url: url)
+            self.player.replaceCurrentItem(with: playerItem)
+            self.addEndObserver(for: playerItem)
+
+            if autoplay {
+                self.player.play()
+                self.isPlaying = true
+            }
+        }
+
+        cacheUpcomingTrack()
+    }
+
+    /// Local cached file if present, otherwise the remote stream URL — kicking off a background
+    /// download to cache it for next time.
+    private func playbackURL(for item: BaseItemDto) async -> URL? {
+        if let localURL = await CacheManager.shared.localFileURL(forItemId: item.Id) {
+            return localURL
+        }
+        guard let remoteURL = JellyfinAPIClient.shared.streamURL(itemId: item.Id) else { return nil }
+        cache(item, from: remoteURL)
+        return remoteURL
+    }
+
+    private func cacheUpcomingTrack() {
+        let lookahead = CacheManager.preCacheLookahead
+        guard lookahead > 0 else { return }
+
+        for offset in 1...lookahead {
+            guard queue.indices.contains(currentIndex + offset) else { break }
+            let item = queue[currentIndex + offset]
+            guard let remoteURL = JellyfinAPIClient.shared.streamURL(itemId: item.Id) else { continue }
+            cache(item, from: remoteURL)
+        }
+    }
+
+    private func cache(_ item: BaseItemDto, from remoteURL: URL) {
+        Task.detached(priority: .utility) {
+            await CacheManager.shared.cacheTrack(
+                id: item.Id,
+                title: item.Name,
+                artistName: item.AlbumArtist ?? item.Artists?.first ?? "",
+                albumName: item.Album ?? "",
+                albumId: item.AlbumId,
+                durationTicks: item.RunTimeTicks ?? 0,
+                remoteURL: remoteURL
+            )
         }
     }
 
