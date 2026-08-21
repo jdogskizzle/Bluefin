@@ -33,4 +33,10 @@ actor LibraryCache {
         }
         try? modelContext.save()
     }
+
+    func totalCacheSizeBytes() -> Int64 {
+        let descriptor = FetchDescriptor<CachedItemList>()
+        let entries = (try? modelContext.fetch(descriptor)) ?? []
+        return entries.reduce(Int64(0)) { $0 + Int64($1.itemsData.count) }
+    }
 }

@@ -162,6 +162,15 @@ actor CacheManager {
         return tracks.reduce(Int64(0)) { $0 + ($1.fileSizeBytes ?? 0) }
     }
 
+    /// Lyrics live on the same `CachedTrack` rows as audio-cache bookkeeping, but conceptually
+    /// belong with the synced library, not the audio cache — `clearCache()` below deliberately
+    /// doesn't touch this data, only `localFilePath`/`isDownloaded`/`fileSizeBytes`.
+    func totalLyricsSizeBytes() -> Int64 {
+        let descriptor = FetchDescriptor<CachedTrack>()
+        let tracks = (try? modelContext.fetch(descriptor)) ?? []
+        return tracks.reduce(Int64(0)) { $0 + Int64($1.lyricsData?.count ?? 0) }
+    }
+
     func clearCache() {
         let descriptor = FetchDescriptor<CachedTrack>(predicate: #Predicate { $0.isDownloaded })
         let tracks = (try? modelContext.fetch(descriptor)) ?? []

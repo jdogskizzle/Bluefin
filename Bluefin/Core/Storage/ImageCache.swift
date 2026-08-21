@@ -63,6 +63,16 @@ actor ImageCache {
         store(fetched, itemId: itemId, imageType: imageType)
     }
 
+    func totalCacheSizeBytes() -> Int64 {
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: [.fileSizeKey]) else {
+            return 0
+        }
+        return urls.reduce(Int64(0)) { total, url in
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            return total + Int64(size)
+        }
+    }
+
     private func evictIfOverLimit() {
         let fileManager = FileManager.default
         guard let urls = try? fileManager.contentsOfDirectory(

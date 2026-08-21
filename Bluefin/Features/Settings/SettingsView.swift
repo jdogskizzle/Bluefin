@@ -64,11 +64,17 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Storage") {
+            Section {
                 HStack {
                     Text("Cached Audio")
                     Spacer()
                     Text(viewModel.formattedCacheSize)
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Text("Cached Library")
+                    Spacer()
+                    Text(viewModel.formattedLibrarySize)
                         .foregroundStyle(.secondary)
                 }
                 Picker("Cache Limit", selection: $viewModel.cacheLimitBytes) {
@@ -83,10 +89,14 @@ struct SettingsView: View {
                     Text("15 tracks").tag(15)
                     Text("20 tracks").tag(20)
                 }
-                Button("Clear Cache", role: .destructive) {
+                Button("Clear Audio Cache", role: .destructive) {
                     Task { await viewModel.clearCache() }
                 }
                 .disabled(viewModel.isClearingCache || viewModel.cacheSizeBytes == 0)
+            } header: {
+                Text("Storage")
+            } footer: {
+                Text("Clearing the audio cache only removes cached audio.")
             }
 
             Section("Account") {
@@ -108,9 +118,14 @@ struct SettingsView: View {
         .task {
             await viewModel.loadLibraries()
             await viewModel.refreshCacheSize()
+            await viewModel.refreshLibrarySize()
         }
         .sheet(isPresented: $showSync) {
             LibrarySyncView()
+        }
+        .onChange(of: showSync) { _, isShowing in
+            guard !isShowing else { return }
+            Task { await viewModel.refreshLibrarySize() }
         }
     }
 }

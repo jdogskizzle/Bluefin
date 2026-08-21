@@ -15,6 +15,7 @@ final class SettingsViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     @Published var cacheSizeBytes: Int64 = 0
+    @Published var librarySizeBytes: Int64 = 0
     @Published var isClearingCache = false
     @Published var cacheLimitBytes: Int64 = CacheManager.cacheLimitBytes {
         didSet {
@@ -33,6 +34,10 @@ final class SettingsViewModel: ObservableObject {
         ByteCountFormatter.string(fromByteCount: cacheSizeBytes, countStyle: .file)
     }
 
+    var formattedLibrarySize: String {
+        ByteCountFormatter.string(fromByteCount: librarySizeBytes, countStyle: .file)
+    }
+
     private let apiClient: JellyfinAPIClient
 
     init(apiClient: JellyfinAPIClient) {
@@ -41,6 +46,15 @@ final class SettingsViewModel: ObservableObject {
 
     func refreshCacheSize() async {
         cacheSizeBytes = await CacheManager.shared.totalCacheSizeBytes()
+    }
+
+    /// The synced library: cached metadata (`LibraryCache`), artwork (`ImageCache`), and lyrics —
+    /// distinct from `cacheSizeBytes` (downloaded audio), and unaffected by `clearCache()`.
+    func refreshLibrarySize() async {
+        let metadataBytes = await LibraryCache.shared.totalCacheSizeBytes()
+        let imageBytes = await ImageCache.shared.totalCacheSizeBytes()
+        let lyricsBytes = await CacheManager.shared.totalLyricsSizeBytes()
+        librarySizeBytes = metadataBytes + imageBytes + lyricsBytes
     }
 
     func clearCache() async {

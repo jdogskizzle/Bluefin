@@ -25,7 +25,7 @@ Status as of 2026-08-20, verified against the current codebase (not just prior p
 - [x] Search view (`Search/SearchView.swift`, `SearchViewModel.swift`)
 - [x] Settings: music library selector, server info, sign out
 - [ ] Home view — currently just a placeholder ("Welcome to Bluefin"). Needs: pinned playlists, recently played, random suggestions, "Listen List"
-- [x] Settings: cache limit controls (`Storage` section — usage display, 1/2/5/10 GB size limit picker, 5/10/15/20-track pre-cache lookahead picker, Clear Cache)
+- [x] Settings: cache limit controls (`Storage` section — separate "Cached Audio" and "Cached Library" size rows, 1/2/5/10 GB size limit picker, 5/10/15/20-track pre-cache lookahead picker, "Clear Audio Cache" with a footer note that it only clears downloaded audio, not the synced library)
 - [ ] Settings: stream quality selector, equalizer toggles — none exist yet
 
 ## Phase 4: Advanced UX & Gestures — mostly not started
