@@ -12,9 +12,11 @@ enum JellyfinError: Error, LocalizedError {
     case invalidURL
     case invalidResponse
     case authenticationFailed
+    case sessionExpired
+    case serverError(Int)
     case connectionFailed(String)
     case decodingFailed
-    
+
     var errorDescription: String? {
         switch self {
         case .invalidURL:
@@ -23,6 +25,10 @@ enum JellyfinError: Error, LocalizedError {
             return "The server returned an invalid response."
         case .authenticationFailed:
             return "Invalid username or password."
+        case .sessionExpired:
+            return "Your session has expired. Please sign in again."
+        case .serverError(let statusCode):
+            return "The server returned an error (status \(statusCode))."
         case .connectionFailed(let message):
             return "Connection failed: \(message)"
         case .decodingFailed:
@@ -42,8 +48,20 @@ class JellyfinAPIClient: ObservableObject {
 
     private let clientName = "Bluefin"
     private let deviceName = "iOS Device"
-    private let deviceId = "BluefinDevice123"
     private let version = "1.0.0"
+    private let deviceIdDefaultsKey = "com.bluefin.deviceId"
+
+    /// A stable ID unique to this install. Jellyfin ties access tokens to the device ID, so
+    /// sharing one across installs (as a hardcoded constant would) makes the server treat
+    /// separate installs as the same device and can invalidate each other's sessions.
+    private lazy var deviceId: String = {
+        if let existing = UserDefaults.standard.string(forKey: deviceIdDefaultsKey) {
+            return existing
+        }
+        let newId = UUID().uuidString
+        UserDefaults.standard.set(newId, forKey: deviceIdDefaultsKey)
+        return newId
+    }()
     private let selectedLibraryDefaultsKey = "selectedLibraryId"
 
     private init() {
@@ -213,8 +231,17 @@ class JellyfinAPIClient: ObservableObject {
         request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw JellyfinError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            await MainActor.run { self.logout() }
+            throw JellyfinError.sessionExpired
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw JellyfinError.serverError(httpResponse.statusCode)
         }
 
         do {

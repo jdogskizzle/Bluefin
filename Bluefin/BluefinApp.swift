@@ -14,7 +14,8 @@ struct BluefinApp: App {
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            CachedTrack.self,
+            ListeningListAlbum.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
