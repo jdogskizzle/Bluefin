@@ -12,6 +12,7 @@ struct NumberedSongRow: View {
     let song: BaseItemDto
     let position: Int
     var showsArtwork: Bool = false
+    var isInSubqueue: Bool = false
     @ObservedObject private var player = AudioPlayerManager.shared
 
     private var isNowPlaying: Bool {
@@ -42,6 +43,12 @@ struct NumberedSongRow: View {
                 .lineLimit(1)
 
             Spacer()
+
+            if isInSubqueue {
+                Image(systemName: "text.insert")
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+            }
 
             if let duration = song.formattedDuration {
                 Text(duration)

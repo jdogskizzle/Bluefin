@@ -17,12 +17,47 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     static let shared = AudioPlayerManager()
 
     @Published private(set) var queue: [BaseItemDto] = []
+    /// A stable id per queue *slot*, parallel to `queue` (same length, same order) — not per song,
+    /// since the same song can appear in the queue more than once. `QueueView` uses this instead of
+    /// position as its `ForEach` identity, so a reorder is diffed as "this row moved" rather than
+    /// "the content at each position changed," which is what SwiftUI needs to animate a drag-drop
+    /// smoothly instead of visibly re-settling into place after the drop. Every mutation to `queue`
+    /// keeps this in lockstep: `insertQueueItem`/`removeQueueItem`/`replaceQueue` below for
+    /// inserting/removing an entry, or (in `moveInQueue`) moving an id alongside its entry so a
+    /// reordered row keeps the *same* id rather than being treated as removed-and-reinserted.
+    @Published private(set) var queueEntryIDs: [UUID] = []
     @Published private(set) var currentIndex: Int = 0
     @Published private(set) var isPlaying: Bool = false
     @Published private(set) var currentTime: TimeInterval = 0
+    /// How many of the entries immediately after `currentIndex` were manually queued via "Add to
+    /// Queue" — always the contiguous run `[currentIndex+1, currentIndex+1+subqueueCount)`. That
+    /// invariant is what makes a plain count sufficient instead of tracking membership per item:
+    /// every mutation (add/remove/reorder) is defined in terms of this same contiguous range.
+    @Published private(set) var subqueueCount: Int = 0
 
     var currentItem: BaseItemDto? {
         queue.indices.contains(currentIndex) ? queue[currentIndex] : nil
+    }
+
+    func isIndexInSubqueue(_ index: Int) -> Bool {
+        guard subqueueCount > 0 else { return false }
+        return (currentIndex + 1..<currentIndex + 1 + subqueueCount).contains(index)
+    }
+
+    private func replaceQueue(_ newQueue: [BaseItemDto]) {
+        queue = newQueue
+        queueEntryIDs = newQueue.map { _ in UUID() }
+    }
+
+    private func insertQueueItem(_ item: BaseItemDto, at index: Int) {
+        queue.insert(item, at: index)
+        queueEntryIDs.insert(UUID(), at: index)
+    }
+
+    @discardableResult
+    private func removeQueueItem(at index: Int) -> BaseItemDto {
+        queueEntryIDs.remove(at: index)
+        return queue.remove(at: index)
     }
 
     private let player = AVPlayer()
@@ -38,16 +73,66 @@ final class AudioPlayerManager: NSObject, ObservableObject {
 
     func play(queue newQueue: [BaseItemDto], startAt index: Int) {
         guard newQueue.indices.contains(index) else { return }
-        queue = newQueue
+        replaceQueue(newQueue)
         currentIndex = index
+        subqueueCount = 0
         loadCurrentItem(autoplay: true)
     }
 
     /// Jumps to a track already in the current queue, leaving the rest of the queue unchanged.
+    /// Jumping forward into (or past) the subqueue consumes whatever of it was skipped over;
+    /// jumping backward into history leaves the subqueue as-is, since there's nothing meaningful
+    /// to restore about a song's subqueue membership once it's already been played past.
     func play(at index: Int) {
         guard queue.indices.contains(index), index != currentIndex else { return }
+        if index > currentIndex {
+            let oldSubqueueEnd = currentIndex + 1 + subqueueCount
+            subqueueCount = index < oldSubqueueEnd ? max(0, oldSubqueueEnd - index - 1) : 0
+        }
         currentIndex = index
         loadCurrentItem(autoplay: true)
+    }
+
+    /// Inserts `song` right after the current song, or after the last existing "Add to Queue" item
+    /// if there already is one — building up a contiguous subqueue rather than scattering additions
+    /// throughout the rest of the queue.
+    func addToSubqueue(_ song: BaseItemDto) {
+        guard !queue.isEmpty else {
+            play(queue: [song], startAt: 0)
+            return
+        }
+        let insertIndex = min(currentIndex + 1 + subqueueCount, queue.count)
+        insertQueueItem(song, at: insertIndex)
+        subqueueCount += 1
+    }
+
+    /// Removes an upcoming (not currently-playing) queue entry.
+    func removeFromQueue(at index: Int) {
+        guard queue.indices.contains(index), index != currentIndex else { return }
+        let wasInSubqueue = isIndexInSubqueue(index)
+        removeQueueItem(at: index)
+        if index < currentIndex {
+            currentIndex -= 1
+        } else if wasInSubqueue {
+            subqueueCount = max(0, subqueueCount - 1)
+        }
+    }
+
+    /// Applies a queue reorder the caller already performed (see `QueueView`, which splices using
+    /// SwiftUI's own `Array.move(fromOffsets:toOffset:)` — the exact primitive `List`'s native
+    /// drag-reorder assumes downstream code uses, so the result can't drift from what the drag
+    /// gesture visually showed). `movedEntryID` locates the moved entry in the new array to
+    /// determine whether it counts as "in the subqueue" afterward, purely by whether it landed
+    /// inside that range — moving into it adds it, moving out removes it, moving within it is a
+    /// no-op.
+    func applyQueueReorder(newQueue: [BaseItemDto], newEntryIDs: [UUID], movedEntryID: UUID, wasInSubqueue: Bool) {
+        queue = newQueue
+        queueEntryIDs = newEntryIDs
+        guard let newIndex = newEntryIDs.firstIndex(of: movedEntryID) else { return }
+        let isNowInSubqueue = isIndexInSubqueue(newIndex)
+        if wasInSubqueue != isNowInSubqueue {
+            subqueueCount = max(0, subqueueCount + (isNowInSubqueue ? 1 : -1))
+        }
     }
 
     func togglePlayPause() {
@@ -68,6 +153,9 @@ final class AudioPlayerManager: NSObject, ObservableObject {
 
     func skipToNext() {
         guard currentIndex + 1 < queue.count else { return }
+        if subqueueCount > 0 {
+            subqueueCount -= 1
+        }
         currentIndex += 1
         loadCurrentItem(autoplay: isPlaying)
     }

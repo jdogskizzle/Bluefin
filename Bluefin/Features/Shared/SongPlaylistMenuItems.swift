@@ -38,6 +38,11 @@ struct SongPlaylistMenuItems: View {
         } label: {
             Label("Add to Playlist", systemImage: "text.badge.plus")
         }
+        Button {
+            AudioPlayerManager.shared.addToSubqueue(song)
+        } label: {
+            Label("Add to Queue", systemImage: "text.insert")
+        }
         if let removableFrom {
             Button(role: .destructive) {
                 PlaylistActionService.removeSong(song, fromPlaylistId: removableFrom.playlistId, playlistName: removableFrom.playlistName)
@@ -48,9 +53,9 @@ struct SongPlaylistMenuItems: View {
     }
 }
 
-/// Long-press context menu + trailing swipe actions offering the same playlist actions, for a song
-/// row inside a `List`. Swipe actions intentionally stay to just the two "add" actions — removal is
-/// context-menu only.
+/// Long-press context menu + swipe actions for a song row inside a `List`: leading (left-to-right)
+/// swipe offers "Add to Queue"; trailing (right-to-left) offers the playlist "add" actions.
+/// "Remove from Playlist" is context-menu only, not a swipe action.
 private struct SongActionsModifier: ViewModifier {
     let song: BaseItemDto
     var removableFrom: RemovableFromPlaylist? = nil
@@ -61,6 +66,14 @@ private struct SongActionsModifier: ViewModifier {
         content
             .contextMenu {
                 SongPlaylistMenuItems(song: song, showPicker: $showPicker, removableFrom: removableFrom)
+            }
+            .swipeActions(edge: .leading) {
+                Button {
+                    AudioPlayerManager.shared.addToSubqueue(song)
+                } label: {
+                    Label("Add to Queue", systemImage: "text.insert")
+                }
+                .tint(.orange)
             }
             .swipeActions(edge: .trailing) {
                 if let pinnedId = pinnedStore.pinnedPlaylistId, let pinnedName = pinnedStore.pinnedPlaylistName {
@@ -85,9 +98,9 @@ private struct SongActionsModifier: ViewModifier {
 }
 
 extension View {
-    /// Long-press context menu + trailing swipe actions for adding `song` to a playlist. Pass
-    /// `removableFrom` when `song` is being shown as part of that specific playlist, to also offer
-    /// "Remove from Playlist" in the context menu.
+    /// Long-press context menu + swipe actions for adding `song` to the play queue or a playlist.
+    /// Pass `removableFrom` when `song` is being shown as part of that specific playlist, to also
+    /// offer "Remove from Playlist" in the context menu.
     func songActions(for song: BaseItemDto, removableFrom: RemovableFromPlaylist? = nil) -> some View {
         modifier(SongActionsModifier(song: song, removableFrom: removableFrom))
     }
