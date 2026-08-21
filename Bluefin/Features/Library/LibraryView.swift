@@ -37,6 +37,7 @@ struct LibraryView: View {
                     }
                 }
             }
+            .avoidsMiniPlayer()
             .navigationTitle("Library")
             .navigationDestination(for: LibraryRoute.self) { route in
                 LibraryDestinationView(route: route)

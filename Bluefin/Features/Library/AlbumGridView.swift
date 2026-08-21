@@ -51,6 +51,7 @@ struct AlbumGridView: View {
                 }
                 .scrollIndicators(.hidden)
                 .ignoresSafeArea(edges: .top)
+                .avoidsMiniPlayer()
             }
         }
         .navigationTitle(bannerItemId != nil ? "" : title)

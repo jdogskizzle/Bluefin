@@ -114,6 +114,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .avoidsMiniPlayer()
         .navigationTitle("Settings")
         .task {
             await viewModel.loadLibraries()

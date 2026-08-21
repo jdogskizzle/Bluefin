@@ -61,6 +61,7 @@ struct SearchView: View {
                             }
                         }
                     }
+                    .avoidsMiniPlayer()
                 }
             }
             .navigationTitle("Search")

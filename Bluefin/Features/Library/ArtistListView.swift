@@ -54,6 +54,7 @@ struct ArtistListView: View {
                             .id(section.letter)
                         }
                     }
+                    .avoidsMiniPlayer()
                     .overlay(alignment: .trailing) {
                         indexBar(proxy: proxy)
                     }

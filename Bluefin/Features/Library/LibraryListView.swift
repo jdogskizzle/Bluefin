@@ -43,6 +43,7 @@ struct LibraryListView: View {
                 List(displayedItems) { item in
                     row(for: item)
                 }
+                .avoidsMiniPlayer()
             }
         }
         .navigationTitle(title)
