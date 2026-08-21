@@ -56,6 +56,67 @@ deploy-device:
 		--device "$$DEVICE_ID" \
 		$(BUNDLE_ID)
 
+deploy-debug:
+	@DEVICE_ID=$$(xcrun simctl list devices booted | \
+		grep 'iPhone 17 Pro' | \
+		sed -E 's/.*\(([A-F0-9-]+)\).*/\1/' | \
+		head -1); \
+	if [ -z "$$DEVICE_ID" ]; then \
+		echo "No booted iPhone 17 Pro simulator found."; \
+		echo "Run 'make deploy' first, or boot a simulator."; \
+		exit 1; \
+	fi; \
+	echo "Building Bluefin..."; \
+	xcodebuild \
+		-project $(PROJECT) \
+		-scheme $(SCHEME) \
+		-configuration Debug \
+		-destination "platform=iOS Simulator,id=$$DEVICE_ID" \
+		-derivedDataPath $(BUILD_DIR) \
+		build && \
+	echo "Installing Bluefin..." && \
+	xcrun simctl install "$$DEVICE_ID" \
+		$(BUILD_DIR)/Build/Products/Debug-iphonesimulator/Bluefin.app && \
+	echo "Launching Bluefin..." && \
+	xcrun simctl launch "$$DEVICE_ID" $(BUNDLE_ID) && \
+	echo "Streaming Bluefin logs..." && \
+	xcrun simctl spawn "$$DEVICE_ID" log stream \
+		--level debug \
+		--predicate 'process == "Bluefin"'
+
+deploy-device-debug:
+	@DEVICE_ID=$$(xcodebuild \
+		-project $(PROJECT) \
+		-scheme $(SCHEME) \
+		-showdestinations 2>/dev/null | \
+		grep 'platform:iOS, arch:arm64, id:' | \
+		grep -v 'placeholder' | \
+		head -1 | \
+		sed -E 's/.*id:([^,}]+).*/\1/'); \
+	if [ -z "$$DEVICE_ID" ]; then \
+		echo "No connected iOS device found."; \
+		echo "Make sure your iPhone is connected, unlocked, and trusted."; \
+		exit 1; \
+	fi; \
+	echo "Deploying to device: $$DEVICE_ID"; \
+	xcodebuild \
+		-project $(PROJECT) \
+		-scheme $(SCHEME) \
+		-configuration Debug \
+		-destination "platform=iOS,id=$$DEVICE_ID" \
+		-derivedDataPath $(BUILD_DIR) \
+		build && \
+	xcrun devicectl device install app \
+		--device "$$DEVICE_ID" \
+		$(BUILD_DIR)/Build/Products/Debug-iphoneos/Bluefin.app && \
+	xcrun devicectl device process launch \
+		--device "$$DEVICE_ID" \
+		$(BUNDLE_ID) && \
+	echo "Streaming Bluefin logs..." && \
+	log stream \
+		--level debug \
+		--predicate 'process == "Bluefin"'
+
 test:
 	xcodebuild \
 		-project $(PROJECT) \
