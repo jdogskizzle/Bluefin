@@ -5,6 +5,7 @@
 //  Created by Jacob Marcuson on 8/20/26.
 //
 
+import Combine
 import Foundation
 import SwiftData
 
@@ -32,6 +33,10 @@ actor LibraryCache {
             modelContext.insert(CachedItemList(key: key, itemsData: data))
         }
         try? modelContext.save()
+
+        Task { @MainActor in
+            LibraryCacheChangeCenter.didChange.send(key)
+        }
     }
 
     func totalCacheSizeBytes() -> Int64 {

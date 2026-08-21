@@ -1,0 +1,94 @@
+//
+//  SongPlaylistMenuItems.swift
+//  Bluefin
+//
+//  Created by Jacob Marcuson on 8/20/26.
+//
+
+import SwiftUI
+
+/// Identifies the playlist a song row is being shown inside of, so its context menu can offer
+/// "Remove from Playlist" — only meaningful when the song is being browsed as part of that specific
+/// playlist (`PlaylistDetailView`), not in a general list like Songs or Search.
+struct RemovableFromPlaylist {
+    let playlistId: String
+    let playlistName: String
+}
+
+/// The playlist actions for a song, shared between the long-press context menu on song rows, their
+/// swipe actions, and the large player's "..." menu — so they stay in sync by construction rather
+/// than by keeping copies in step. `removableFrom` is only passed by call sites that know the song
+/// is being viewed within that playlist.
+struct SongPlaylistMenuItems: View {
+    let song: BaseItemDto
+    @Binding var showPicker: Bool
+    var removableFrom: RemovableFromPlaylist? = nil
+    @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
+
+    var body: some View {
+        if let pinnedId = pinnedStore.pinnedPlaylistId, let pinnedName = pinnedStore.pinnedPlaylistName {
+            Button {
+                PlaylistActionService.addSong(song, toPlaylistId: pinnedId, playlistName: pinnedName)
+            } label: {
+                Label("Add to \(pinnedName)", systemImage: "pin")
+            }
+        }
+        Button {
+            showPicker = true
+        } label: {
+            Label("Add to Playlist", systemImage: "text.badge.plus")
+        }
+        if let removableFrom {
+            Button(role: .destructive) {
+                PlaylistActionService.removeSong(song, fromPlaylistId: removableFrom.playlistId, playlistName: removableFrom.playlistName)
+            } label: {
+                Label("Remove from Playlist", systemImage: "minus.circle")
+            }
+        }
+    }
+}
+
+/// Long-press context menu + trailing swipe actions offering the same playlist actions, for a song
+/// row inside a `List`. Swipe actions intentionally stay to just the two "add" actions — removal is
+/// context-menu only.
+private struct SongActionsModifier: ViewModifier {
+    let song: BaseItemDto
+    var removableFrom: RemovableFromPlaylist? = nil
+    @State private var showPicker = false
+    @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
+
+    func body(content: Content) -> some View {
+        content
+            .contextMenu {
+                SongPlaylistMenuItems(song: song, showPicker: $showPicker, removableFrom: removableFrom)
+            }
+            .swipeActions(edge: .trailing) {
+                if let pinnedId = pinnedStore.pinnedPlaylistId, let pinnedName = pinnedStore.pinnedPlaylistName {
+                    Button {
+                        PlaylistActionService.addSong(song, toPlaylistId: pinnedId, playlistName: pinnedName)
+                    } label: {
+                        Label("Add to \(pinnedName)", systemImage: "pin")
+                    }
+                    .tint(.blue)
+                }
+                Button {
+                    showPicker = true
+                } label: {
+                    Label("Add to Playlist", systemImage: "text.badge.plus")
+                }
+                .tint(.indigo)
+            }
+            .sheet(isPresented: $showPicker) {
+                PlaylistPickerView(song: song)
+            }
+    }
+}
+
+extension View {
+    /// Long-press context menu + trailing swipe actions for adding `song` to a playlist. Pass
+    /// `removableFrom` when `song` is being shown as part of that specific playlist, to also offer
+    /// "Remove from Playlist" in the context menu.
+    func songActions(for song: BaseItemDto, removableFrom: RemovableFromPlaylist? = nil) -> some View {
+        modifier(SongActionsModifier(song: song, removableFrom: removableFrom))
+    }
+}

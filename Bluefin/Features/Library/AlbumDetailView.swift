@@ -37,6 +37,7 @@ struct AlbumDetailView: View {
                                 NumberedSongRow(song: song, position: index + 1)
                             }
                             .buttonStyle(.plain)
+                            .songActions(for: song)
                         }
                     }
 

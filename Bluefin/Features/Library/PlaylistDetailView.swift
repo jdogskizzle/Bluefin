@@ -39,6 +39,7 @@ struct PlaylistDetailView: View {
                                 NumberedSongRow(song: song, position: index + 1, showsArtwork: true)
                             }
                             .buttonStyle(.plain)
+                            .songActions(for: song, removableFrom: RemovableFromPlaylist(playlistId: playlist.Id, playlistName: playlist.Name))
                         }
                     }
                 }

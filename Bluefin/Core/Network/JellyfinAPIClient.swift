@@ -298,6 +298,63 @@ class JellyfinAPIClient: ObservableObject {
         return response.Items
     }
 
+    func addItemToPlaylist(playlistId: String, itemId: String) async throws {
+        guard let userId else { throw JellyfinError.invalidResponse }
+        guard let serverURL else { throw JellyfinError.invalidURL }
+        guard var components = URLComponents(url: serverURL.appendingPathComponent("Playlists/\(playlistId)/Items"), resolvingAgainstBaseURL: false) else {
+            throw JellyfinError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "ids", value: itemId),
+            URLQueryItem(name: "userId", value: userId)
+        ]
+        guard let url = components.url else { throw JellyfinError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        request.timeoutInterval = 10
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw JellyfinError.invalidResponse }
+
+        if httpResponse.statusCode == 401 {
+            await MainActor.run { self.logout() }
+            throw JellyfinError.sessionExpired
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw JellyfinError.serverError(httpResponse.statusCode)
+        }
+    }
+
+    /// `entryId` is the playlist entry to remove — `BaseItemDto.PlaylistItemId` for a song fetched
+    /// as part of a playlist, not the song's own `Id` — since Jellyfin allows the same song to
+    /// appear in a playlist more than once and needs to know which occurrence to remove.
+    func removeItemFromPlaylist(playlistId: String, entryId: String) async throws {
+        guard let serverURL else { throw JellyfinError.invalidURL }
+        guard var components = URLComponents(url: serverURL.appendingPathComponent("Playlists/\(playlistId)/Items"), resolvingAgainstBaseURL: false) else {
+            throw JellyfinError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "entryIds", value: entryId)]
+        guard let url = components.url else { throw JellyfinError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        request.timeoutInterval = 10
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw JellyfinError.invalidResponse }
+
+        if httpResponse.statusCode == 401 {
+            await MainActor.run { self.logout() }
+            throw JellyfinError.sessionExpired
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw JellyfinError.serverError(httpResponse.statusCode)
+        }
+    }
+
     func fetchLyrics(itemId: String) async throws -> [LyricLine] {
         let response: LyricsResponse = try await performGet(path: "Audio/\(itemId)/Lyrics")
         return response.Lyrics

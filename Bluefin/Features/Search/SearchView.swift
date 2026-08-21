@@ -56,6 +56,7 @@ struct SearchView: View {
                                         let index = viewModel.songs.firstIndex(of: item) ?? 0
                                         AudioPlayerManager.shared.play(queue: viewModel.songs, startAt: index)
                                     }
+                                    .songActions(for: item)
                                 }
                             }
                         }

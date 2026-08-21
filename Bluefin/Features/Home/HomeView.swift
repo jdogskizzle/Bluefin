@@ -38,6 +38,9 @@ struct HomeView: View {
         .task(id: pinnedStore.pinnedPlaylistId) {
             await loadPinnedPlaylist()
         }
+        .onReceive(LibraryCacheChangeCenter.didChange.filter { $0 == "playlists" }) { _ in
+            Task { await loadPinnedPlaylist() }
+        }
     }
 
     private func loadPinnedPlaylist() async {

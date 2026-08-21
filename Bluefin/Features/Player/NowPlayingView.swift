@@ -12,6 +12,7 @@ struct NowPlayingView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
     @State private var showQueue = false
     @State private var showLyrics = false
+    @State private var showPlaylistPicker = false
     @State private var hasLyrics = false
 
     var body: some View {
@@ -61,6 +62,14 @@ struct NowPlayingView: View {
         }
         .padding(.bottom, 24)
         .presentationDragIndicator(.visible)
+        .overlay {
+            ToastOverlay()
+        }
+        .sheet(isPresented: $showPlaylistPicker) {
+            if let item = player.currentItem {
+                PlaylistPickerView(song: item)
+            }
+        }
         .task(id: player.currentItem?.Id) {
             await checkLyricsAvailability()
         }
@@ -81,7 +90,9 @@ struct NowPlayingView: View {
         } placeholder: {
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.secondary.opacity(0.15))
-                .overlay(Image(systemName: "music.note").font(.system(size: 60)).foregroundStyle(.secondary))
+                .overlay(
+                    Image(systemName: "music.note").font(.system(size: 60)).foregroundStyle(
+                        .secondary))
         }
         .aspectRatio(1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -107,15 +118,15 @@ struct NowPlayingView: View {
 
             HStack(spacing: 16) {
                 Button {
-                    // Add to playlist — designed later.
+                    // Favorite — designed later.
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "heart")
                         .font(.title3)
                         .frame(width: 24, height: 24)
                 }
 
-                Button {
-                    // More options — designed later.
+                Menu {
+                    SongPlaylistMenuItems(song: item, showPicker: $showPlaylistPicker)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.title3)
@@ -154,8 +165,8 @@ struct NowPlayingView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             #if canImport(UIKit)
-            VolumeSliderView()
-                .frame(height: 20)
+                VolumeSliderView()
+                    .frame(height: 20)
             #endif
             Image(systemName: "speaker.wave.3.fill")
                 .font(.caption)
@@ -167,10 +178,10 @@ struct NowPlayingView: View {
     private var utilityButtons: some View {
         HStack(spacing: 72) {
             #if canImport(UIKit)
-            RoutePickerView()
-                .frame(width: 24, height: 24)
+                RoutePickerView()
+                    .frame(width: 24, height: 24)
             #else
-            utilityButton(systemImage: "airplayaudio")
+                utilityButton(systemImage: "airplayaudio")
             #endif
 
             Button {

@@ -58,10 +58,11 @@ struct LibraryListView: View {
             AudioPlayerManager.shared.play(queue: viewModel.items, startAt: index)
         }
 
-        if itemType == .playlist {
+        switch itemType {
+        case .playlist:
             row.contextMenu {
                 Button {
-                    pinnedStore.togglePin(item.Id)
+                    pinnedStore.togglePin(id: item.Id, name: item.Name)
                 } label: {
                     if pinnedStore.isPinned(item.Id) {
                         Label("Unpin Playlist", systemImage: "pin.slash")
@@ -70,8 +71,8 @@ struct LibraryListView: View {
                     }
                 }
             }
-        } else {
-            row
+        case .song:
+            row.songActions(for: item)
         }
     }
 

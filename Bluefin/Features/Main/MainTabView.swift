@@ -43,6 +43,8 @@ struct MainTabView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, MiniPlayerView.tabBarGap)
             }
+
+            ToastOverlay()
         }
     }
 }
