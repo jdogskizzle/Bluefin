@@ -11,6 +11,8 @@ import SwiftUI
 struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel(apiClient: .shared)
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
+    @ObservedObject private var syncManager = LibrarySyncManager.shared
+    @State private var showSync = false
 
     var body: some View {
         Form {
@@ -37,6 +39,26 @@ struct SettingsView: View {
                                         .foregroundStyle(.blue)
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            Section("Library Sync") {
+                Button {
+                    showSync = true
+                } label: {
+                    HStack {
+                        Text("Sync Library")
+                        Spacer()
+                        if let lastSyncedAt = syncManager.lastSyncedAt {
+                            Text(lastSyncedAt.formatted(date: .abbreviated, time: .shortened))
+                                .foregroundStyle(.secondary)
+                                .font(.footnote)
+                        } else {
+                            Text("Never")
+                                .foregroundStyle(.secondary)
+                                .font(.footnote)
                         }
                     }
                 }
@@ -86,6 +108,9 @@ struct SettingsView: View {
         .task {
             await viewModel.loadLibraries()
             await viewModel.refreshCacheSize()
+        }
+        .sheet(isPresented: $showSync) {
+            LibrarySyncView()
         }
     }
 }

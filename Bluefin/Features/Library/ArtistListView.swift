@@ -12,13 +12,20 @@ struct ArtistListView: View {
     @StateObject private var viewModel: LibraryListViewModel
     @State private var indexBarHeight: CGFloat = 0
 
-    init(fetch: @escaping () async throws -> [BaseItemDto]) {
-        _viewModel = StateObject(wrappedValue: LibraryListViewModel(fetch: fetch))
+    init(cacheKey: String) {
+        _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: cacheKey))
     }
 
+    /// Sorted (and grouped) by the same "article-stripped" key, so "The Doors" lands in the D
+    /// section next to the other D artists instead of breaking out its own T section — matching
+    /// how Jellyfin's own `SortName` convention (which the raw `Name` alone doesn't reflect)
+    /// alphabetizes a leading "The"/"A"/"An" by what follows it.
     private var sections: [(letter: String, items: [BaseItemDto])] {
+        let sorted = viewModel.items.sorted {
+            ArtistListView.sortableName($0.Name).localizedCaseInsensitiveCompare(ArtistListView.sortableName($1.Name)) == .orderedAscending
+        }
         var result: [(letter: String, items: [BaseItemDto])] = []
-        for item in viewModel.items {
+        for item in sorted {
             let letter = ArtistListView.firstLetter(of: item.Name)
             if let lastIndex = result.indices.last, result[lastIndex].letter == letter {
                 result[lastIndex].items.append(item)
@@ -31,14 +38,8 @@ struct ArtistListView: View {
 
     var body: some View {
         Group {
-            if viewModel.isLoading {
-                ProgressView()
-            } else if let error = viewModel.errorMessage {
-                ContentUnavailableView(
-                    "Couldn't Load Artists",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error)
-                )
+            if !viewModel.hasSynced {
+                NotSyncedView(itemsDescription: "artists")
             } else if viewModel.items.isEmpty {
                 ContentUnavailableView("No Artists", systemImage: "music.mic")
             } else {
@@ -97,8 +98,18 @@ struct ArtistListView: View {
         )
     }
 
+    private static func sortableName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        for article in ["The ", "A ", "An "] {
+            if trimmed.range(of: article, options: [.caseInsensitive, .anchored]) != nil {
+                return String(trimmed.dropFirst(article.count))
+            }
+        }
+        return trimmed
+    }
+
     private static func firstLetter(of name: String) -> String {
-        guard let first = name.trimmingCharacters(in: .whitespacesAndNewlines).first else { return "#" }
+        guard let first = sortableName(name).first else { return "#" }
         return first.isLetter ? String(first).uppercased() : "#"
     }
 }

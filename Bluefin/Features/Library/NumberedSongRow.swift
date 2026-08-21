@@ -54,7 +54,7 @@ struct NumberedSongRow: View {
 
     @ViewBuilder
     private var artwork: some View {
-        AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: song.artworkItemId, maxWidth: 100)) { image in
+        CachedAsyncImage(itemId: song.artworkItemId) { image in
             image.resizable().aspectRatio(contentMode: .fill)
         } placeholder: {
             RoundedRectangle(cornerRadius: 4)

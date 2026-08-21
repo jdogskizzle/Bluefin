@@ -13,22 +13,16 @@ struct LibraryListView: View {
     let itemType: LibraryItemKind
     @StateObject private var viewModel: LibraryListViewModel
 
-    init(title: String, itemType: LibraryItemKind, fetch: @escaping () async throws -> [BaseItemDto]) {
+    init(title: String, itemType: LibraryItemKind, cacheKey: String) {
         self.title = title
         self.itemType = itemType
-        _viewModel = StateObject(wrappedValue: LibraryListViewModel(fetch: fetch))
+        _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: cacheKey))
     }
 
     var body: some View {
         Group {
-            if viewModel.isLoading {
-                ProgressView()
-            } else if let error = viewModel.errorMessage {
-                ContentUnavailableView(
-                    "Couldn't Load \(title)",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error)
-                )
+            if !viewModel.hasSynced {
+                NotSyncedView(itemsDescription: title.lowercased())
             } else if viewModel.items.isEmpty {
                 ContentUnavailableView("No \(title)", systemImage: symbolForEmpty)
             } else {

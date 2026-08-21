@@ -24,6 +24,10 @@ final class CachedTrack {
     var isDownloaded: Bool
     var fileSizeBytes: Int64?
     var lastAccessedDate: Date
+    /// JSON-encoded `[LyricLine]`. Non-nil (possibly encoding an empty array) once lyrics have
+    /// been fetched at least once, so an empty result is distinguishable from "not checked yet"
+    /// and a track confirmed to have no lyrics isn't re-fetched every time.
+    var lyricsData: Data?
 
     init(
         id: String,
@@ -35,7 +39,8 @@ final class CachedTrack {
         localFilePath: String? = nil,
         isDownloaded: Bool = false,
         fileSizeBytes: Int64? = nil,
-        lastAccessedDate: Date = .now
+        lastAccessedDate: Date = .now,
+        lyricsData: Data? = nil
     ) {
         self.id = id
         self.title = title
@@ -47,6 +52,7 @@ final class CachedTrack {
         self.isDownloaded = isDownloaded
         self.fileSizeBytes = fileSizeBytes
         self.lastAccessedDate = lastAccessedDate
+        self.lyricsData = lyricsData
     }
 }
 

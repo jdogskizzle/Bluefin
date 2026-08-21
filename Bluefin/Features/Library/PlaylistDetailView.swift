@@ -14,21 +14,13 @@ struct PlaylistDetailView: View {
 
     init(playlist: BaseItemDto) {
         self.playlist = playlist
-        _viewModel = StateObject(wrappedValue: LibraryListViewModel {
-            try await JellyfinAPIClient.shared.fetchPlaylistItems(playlistId: playlist.Id)
-        })
+        _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: "playlistSongs:\(playlist.Id)"))
     }
 
     var body: some View {
         Group {
-            if viewModel.isLoading {
-                ProgressView()
-            } else if let error = viewModel.errorMessage {
-                ContentUnavailableView(
-                    "Couldn't Load Playlist",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error)
-                )
+            if !viewModel.hasSynced {
+                NotSyncedView(itemsDescription: "playlist's songs")
             } else if viewModel.items.isEmpty {
                 ContentUnavailableView("No Songs", systemImage: "music.note.list")
             } else {
@@ -63,7 +55,7 @@ struct PlaylistDetailView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: playlist.Id, maxWidth: 600)) { image in
+            CachedAsyncImage(itemId: playlist.Id) { image in
                 image.resizable().aspectRatio(contentMode: .fill)
             } placeholder: {
                 RoundedRectangle(cornerRadius: 8)

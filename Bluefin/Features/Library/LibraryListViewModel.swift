@@ -12,26 +12,28 @@ enum LibraryItemKind {
     case song, playlist
 }
 
+/// Reads a list screen's items purely from `LibraryCache` — nothing here ever talks to Jellyfin.
+/// The cache is populated exclusively by an explicit `LibrarySyncManager.sync()` run from Settings,
+/// so a screen shows whatever the last sync produced (or nothing, prompting the user to sync) and
+/// never triggers a network call just by being opened.
 @MainActor
 final class LibraryListViewModel: ObservableObject {
     @Published var items: [BaseItemDto] = []
-    @Published var isLoading = false
-    @Published var errorMessage: String?
+    @Published private(set) var hasSynced = false
 
-    private let fetch: () async throws -> [BaseItemDto]
+    private let cacheKey: String
 
-    init(fetch: @escaping () async throws -> [BaseItemDto]) {
-        self.fetch = fetch
+    init(cacheKey: String) {
+        self.cacheKey = cacheKey
     }
 
     func load() async {
-        isLoading = true
-        errorMessage = nil
-        do {
-            items = try await fetch()
-        } catch {
-            errorMessage = error.localizedDescription
+        if let cached = await LibraryCache.shared.items(for: cacheKey) {
+            items = cached
+            hasSynced = true
+        } else {
+            items = []
+            hasSynced = false
         }
-        isLoading = false
     }
 }

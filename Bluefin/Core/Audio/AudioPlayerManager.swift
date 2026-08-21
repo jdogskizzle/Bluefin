@@ -251,10 +251,12 @@ final class AudioPlayerManager: NSObject, ObservableObject {
 
     private func loadArtwork(for item: BaseItemDto) {
         #if canImport(UIKit)
-        guard let url = JellyfinAPIClient.shared.imageURL(itemId: item.artworkItemId, maxWidth: 600) else { return }
+        let itemId = item.artworkItemId
 
         Task {
-            guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else { return }
+            await ImageCache.shared.fetchAndStore(itemId: itemId)
+            guard let data = await ImageCache.shared.data(itemId: itemId, imageType: "Primary"),
+                  let image = UIImage(data: data) else { return }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             guard var currentInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo,
                   currentInfo[MPMediaItemPropertyTitle] as? String == item.Name else { return }

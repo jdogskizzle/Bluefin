@@ -67,16 +67,16 @@ struct NowPlayingView: View {
     }
 
     private func checkLyricsAvailability() async {
-        guard let itemId = player.currentItem?.Id else {
+        guard let item = player.currentItem else {
             hasLyrics = false
             return
         }
-        let lines = (try? await JellyfinAPIClient.shared.fetchLyrics(itemId: itemId)) ?? []
+        let lines = await CacheManager.shared.lyrics(for: item)
         hasLyrics = !lines.isEmpty
     }
 
     private func artwork(for item: BaseItemDto) -> some View {
-        AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: item.artworkItemId, maxWidth: 600)) { image in
+        CachedAsyncImage(itemId: item.artworkItemId) { image in
             image.resizable().aspectRatio(contentMode: .fill)
         } placeholder: {
             RoundedRectangle(cornerRadius: 12)

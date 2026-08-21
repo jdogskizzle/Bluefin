@@ -21,23 +21,17 @@ struct AlbumGridView: View {
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
-    init(title: String, subtitle: AlbumGridSubtitle, bannerItemId: String? = nil, fetch: @escaping () async throws -> [BaseItemDto]) {
+    init(title: String, subtitle: AlbumGridSubtitle, bannerItemId: String? = nil, cacheKey: String) {
         self.title = title
         self.subtitle = subtitle
         self.bannerItemId = bannerItemId
-        _viewModel = StateObject(wrappedValue: LibraryListViewModel(fetch: fetch))
+        _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: cacheKey))
     }
 
     var body: some View {
         Group {
-            if viewModel.isLoading {
-                ProgressView()
-            } else if let error = viewModel.errorMessage {
-                ContentUnavailableView(
-                    "Couldn't Load \(title)",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error)
-                )
+            if !viewModel.hasSynced {
+                NotSyncedView(itemsDescription: "albums")
             } else if viewModel.items.isEmpty {
                 ContentUnavailableView("No Albums", systemImage: "square.stack")
             } else {
@@ -70,7 +64,7 @@ struct AlbumGridView: View {
     @ViewBuilder
     private func banner(itemId: String) -> some View {
         ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: itemId, imageType: "Backdrop", maxWidth: 1200)) { image in
+            CachedAsyncImage(itemId: itemId, imageType: "Backdrop") { image in
                 image
                     .resizable()
                     .scaledToFit()
@@ -109,7 +103,7 @@ struct AlbumGridCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: album.Id, maxWidth: 400)) { image in
+            CachedAsyncImage(itemId: album.Id) { image in
                 image.resizable().aspectRatio(contentMode: .fill)
             } placeholder: {
                 RoundedRectangle(cornerRadius: 8)

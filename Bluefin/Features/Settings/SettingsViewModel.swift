@@ -50,14 +50,26 @@ final class SettingsViewModel: ObservableObject {
         isClearingCache = false
     }
 
+    private static let librariesCacheKey = "musicLibraries"
+
     func loadLibraries() async {
-        isLoading = true
         errorMessage = nil
+        let cached = await LibraryCache.shared.items(for: Self.librariesCacheKey)
+        if let cached {
+            musicLibraries = cached
+        } else {
+            isLoading = true
+        }
+
         do {
             let all = try await apiClient.fetchLibraries()
-            musicLibraries = all.filter { $0.CollectionType == "music" }
+            let libraries = all.filter { $0.CollectionType == "music" }
+            musicLibraries = libraries
+            await LibraryCache.shared.store(libraries, for: Self.librariesCacheKey)
         } catch {
-            errorMessage = error.localizedDescription
+            if cached == nil {
+                errorMessage = error.localizedDescription
+            }
         }
         isLoading = false
     }

@@ -15,7 +15,7 @@ struct MiniPlayerView: View {
     var body: some View {
         if let item = player.currentItem {
             HStack(spacing: 12) {
-                AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: item.artworkItemId, maxWidth: 100)) { image in
+                CachedAsyncImage(itemId: item.artworkItemId) { image in
                     image.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: {
                     RoundedRectangle(cornerRadius: 4)

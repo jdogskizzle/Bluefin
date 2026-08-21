@@ -39,11 +39,10 @@ struct LibraryItemRow: View {
 
     @ViewBuilder
     private var artwork: some View {
-        let url = JellyfinAPIClient.shared.imageURL(itemId: item.artworkItemId, maxWidth: 100)
         Group {
             switch item.ItemType {
             case "MusicArtist":
-                AsyncImage(url: url) { image in
+                CachedAsyncImage(itemId: item.artworkItemId) { image in
                     image.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: {
                     Image(systemName: "music.mic")
@@ -51,7 +50,7 @@ struct LibraryItemRow: View {
                 }
                 .clipShape(Circle())
             default:
-                AsyncImage(url: url) { image in
+                CachedAsyncImage(itemId: item.artworkItemId) { image in
                     image.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: {
                     Image(systemName: fallbackSymbol)

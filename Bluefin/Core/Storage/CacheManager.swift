@@ -73,6 +73,33 @@ actor CacheManager {
         return URL(fileURLWithPath: path)
     }
 
+    /// Cached lyrics if present, otherwise fetches from the server and persists the result
+    /// (including an empty result, so a track confirmed to have none isn't re-fetched every time
+    /// lyrics are opened). A failed fetch returns an empty result without caching it, so it's
+    /// retried on the next attempt.
+    func lyrics(for item: BaseItemDto) async -> [LyricLine] {
+        if let data = fetchTrack(id: item.Id)?.lyricsData,
+           let cached = try? JSONDecoder().decode([LyricLine].self, from: data) {
+            return cached
+        }
+
+        guard let fetched = try? await JellyfinAPIClient.shared.fetchLyrics(itemId: item.Id) else {
+            return []
+        }
+
+        if let data = try? JSONEncoder().encode(fetched) {
+            if let track = fetchTrack(id: item.Id) {
+                track.lyricsData = data
+            } else {
+                let track = CachedTrack(item: item)
+                track.lyricsData = data
+                modelContext.insert(track)
+            }
+            try? modelContext.save()
+        }
+        return fetched
+    }
+
     /// Downloads a track to the cache if it isn't already cached or in flight. Safe to call
     /// repeatedly (e.g. once for the current track, once for pre-caching the next).
     func cacheTrack(

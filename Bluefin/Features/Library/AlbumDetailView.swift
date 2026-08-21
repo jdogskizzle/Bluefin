@@ -14,26 +14,13 @@ struct AlbumDetailView: View {
 
     init(album: BaseItemDto) {
         self.album = album
-        _viewModel = StateObject(wrappedValue: LibraryListViewModel {
-            try await JellyfinAPIClient.shared.fetchItems(
-                parentId: album.Id,
-                includeItemTypes: "Audio",
-                recursive: false,
-                sortBy: "IndexNumber"
-            )
-        })
+        _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: "albumSongs:\(album.Id)"))
     }
 
     var body: some View {
         Group {
-            if viewModel.isLoading {
-                ProgressView()
-            } else if let error = viewModel.errorMessage {
-                ContentUnavailableView(
-                    "Couldn't Load Album",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error)
-                )
+            if !viewModel.hasSynced {
+                NotSyncedView(itemsDescription: "album's songs")
             } else {
                 List {
                     Section {
@@ -72,7 +59,7 @@ struct AlbumDetailView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            AsyncImage(url: JellyfinAPIClient.shared.imageURL(itemId: album.Id, maxWidth: 600)) { image in
+            CachedAsyncImage(itemId: album.Id) { image in
                 image.resizable().aspectRatio(contentMode: .fill)
             } placeholder: {
                 RoundedRectangle(cornerRadius: 8)

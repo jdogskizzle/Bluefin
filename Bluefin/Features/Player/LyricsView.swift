@@ -96,12 +96,12 @@ struct LyricsView: View {
     }
 
     private func loadLyrics() async {
-        guard let itemId = player.currentItem?.Id else {
+        guard let item = player.currentItem else {
             lines = []
             return
         }
         isLoading = true
-        lines = (try? await JellyfinAPIClient.shared.fetchLyrics(itemId: itemId)) ?? []
+        lines = await CacheManager.shared.lyrics(for: item)
         isLoading = false
     }
 }
