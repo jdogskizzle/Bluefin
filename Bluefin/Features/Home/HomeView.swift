@@ -11,6 +11,7 @@ import SwiftUI
 struct HomeView: View {
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
     @State private var pinnedPlaylist: BaseItemDto?
+    @State private var pinnedPlaylistSongs: [BaseItemDto] = []
 
     var body: some View {
         NavigationStack {
@@ -38,7 +39,8 @@ struct HomeView: View {
         .task(id: pinnedStore.pinnedPlaylistId) {
             await loadPinnedPlaylist()
         }
-        .onReceive(LibraryCacheChangeCenter.didChange.filter { $0 == "playlists" }) { _ in
+        .onReceive(LibraryCacheChangeCenter.didChange) { key in
+            guard let id = pinnedStore.pinnedPlaylistId, key == "playlists" || key == "playlistSongs:\(id)" else { return }
             Task { await loadPinnedPlaylist() }
         }
     }
@@ -46,10 +48,12 @@ struct HomeView: View {
     private func loadPinnedPlaylist() async {
         guard let id = pinnedStore.pinnedPlaylistId else {
             pinnedPlaylist = nil
+            pinnedPlaylistSongs = []
             return
         }
         let playlists = await LibraryCache.shared.items(for: "playlists") ?? []
         pinnedPlaylist = playlists.first { $0.Id == id }
+        pinnedPlaylistSongs = await LibraryCache.shared.items(for: "playlistSongs:\(id)") ?? []
     }
 
     private func pinnedSection(for playlist: BaseItemDto) -> some View {
@@ -90,6 +94,8 @@ struct HomeView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
+
+            PlayShuffleBar(songs: pinnedPlaylistSongs)
         }
     }
 }
