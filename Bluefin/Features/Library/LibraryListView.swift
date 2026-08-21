@@ -12,11 +12,25 @@ struct LibraryListView: View {
     let title: String
     let itemType: LibraryItemKind
     @StateObject private var viewModel: LibraryListViewModel
+    @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
 
     init(title: String, itemType: LibraryItemKind, cacheKey: String) {
         self.title = title
         self.itemType = itemType
         _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: cacheKey))
+    }
+
+    /// The pinned playlist first, if there is one — otherwise unchanged.
+    private var displayedItems: [BaseItemDto] {
+        guard itemType == .playlist,
+              let pinnedId = pinnedStore.pinnedPlaylistId,
+              let pinnedIndex = viewModel.items.firstIndex(where: { $0.Id == pinnedId }) else {
+            return viewModel.items
+        }
+        var items = viewModel.items
+        let pinned = items.remove(at: pinnedIndex)
+        items.insert(pinned, at: 0)
+        return items
     }
 
     var body: some View {
@@ -26,17 +40,38 @@ struct LibraryListView: View {
             } else if viewModel.items.isEmpty {
                 ContentUnavailableView("No \(title)", systemImage: symbolForEmpty)
             } else {
-                List(viewModel.items) { item in
-                    LibraryNavigableRow(item: item) {
-                        let index = viewModel.items.firstIndex(of: item) ?? 0
-                        AudioPlayerManager.shared.play(queue: viewModel.items, startAt: index)
-                    }
+                List(displayedItems) { item in
+                    row(for: item)
                 }
             }
         }
         .navigationTitle(title)
         .task {
             await viewModel.load()
+        }
+    }
+
+    @ViewBuilder
+    private func row(for item: BaseItemDto) -> some View {
+        let row = LibraryNavigableRow(item: item, isPinned: pinnedStore.isPinned(item.Id)) {
+            let index = viewModel.items.firstIndex(of: item) ?? 0
+            AudioPlayerManager.shared.play(queue: viewModel.items, startAt: index)
+        }
+
+        if itemType == .playlist {
+            row.contextMenu {
+                Button {
+                    pinnedStore.togglePin(item.Id)
+                } label: {
+                    if pinnedStore.isPinned(item.Id) {
+                        Label("Unpin Playlist", systemImage: "pin.slash")
+                    } else {
+                        Label("Pin Playlist", systemImage: "pin")
+                    }
+                }
+            }
+        } else {
+            row
         }
     }
 

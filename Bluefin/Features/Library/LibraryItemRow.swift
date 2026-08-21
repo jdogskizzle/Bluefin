@@ -10,6 +10,7 @@ import SwiftUI
 
 struct LibraryItemRow: View {
     let item: BaseItemDto
+    var isPinned: Bool = false
     @ObservedObject private var player = AudioPlayerManager.shared
 
     private var isNowPlaying: Bool {
@@ -30,6 +31,12 @@ struct LibraryItemRow: View {
                         .foregroundStyle(isNowPlaying ? Color.accentColor : Color.secondary)
                         .lineLimit(1)
                 }
+            }
+            if isPinned {
+                Spacer()
+                Image(systemName: "pin.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)

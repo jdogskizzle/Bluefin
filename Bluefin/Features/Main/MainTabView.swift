@@ -15,10 +15,7 @@ struct MainTabView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             TabView {
-                NavigationStack {
-                    Text("Welcome to Bluefin")
-                        .navigationTitle("Home")
-                }
+                HomeView()
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
