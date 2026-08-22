@@ -10,9 +10,10 @@ import SwiftUI
 
 struct LibraryView: View {
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
+    @ObservedObject private var navigator = AppNavigator.shared
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigator.libraryPath) {
             Group {
                 if apiClient.selectedLibraryId == nil {
                     ContentUnavailableView(

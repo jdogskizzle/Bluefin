@@ -11,9 +11,10 @@ import SwiftUI
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel(apiClient: .shared)
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
+    @ObservedObject private var navigator = AppNavigator.shared
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigator.searchPath) {
             Group {
                 if apiClient.selectedLibraryId == nil {
                     ContentUnavailableView(

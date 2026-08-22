@@ -10,11 +10,12 @@ import SwiftUI
 
 struct HomeView: View {
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
+    @ObservedObject private var navigator = AppNavigator.shared
     @State private var pinnedPlaylist: BaseItemDto?
     @State private var pinnedPlaylistSongs: [BaseItemDto] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigator.homePath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let pinnedPlaylist {

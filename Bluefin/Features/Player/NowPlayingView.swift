@@ -14,6 +14,7 @@ struct NowPlayingView: View {
     @State private var showLyrics = false
     @State private var showPlaylistPicker = false
     @State private var hasLyrics = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 24) {
@@ -84,6 +85,30 @@ struct NowPlayingView: View {
         hasLyrics = !lines.isEmpty
     }
 
+    private func goToArtist(for item: BaseItemDto) async {
+        guard let artistName = item.AlbumArtist ?? item.Artists?.first,
+              let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
+              let artists = await LibraryCache.shared.items(for: "artists:\(libraryId)"),
+              let artist = artists.first(where: { $0.Name == artistName }) else {
+            ToastCenter.shared.show("Couldn't find that artist", isError: true)
+            return
+        }
+        dismiss()
+        AppNavigator.shared.navigate(to: .artistAlbums(artist))
+    }
+
+    private func goToAlbum(for item: BaseItemDto) async {
+        guard let albumId = item.AlbumId,
+              let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
+              let albums = await LibraryCache.shared.items(for: "albums:\(libraryId)"),
+              let album = albums.first(where: { $0.Id == albumId }) else {
+            ToastCenter.shared.show("Couldn't find that album", isError: true)
+            return
+        }
+        dismiss()
+        AppNavigator.shared.navigate(to: .albumSongs(album))
+    }
+
     private func artwork(for item: BaseItemDto) -> some View {
         CachedAsyncImage(itemId: item.artworkItemId) { image in
             image.resizable().aspectRatio(contentMode: .fill)
@@ -101,18 +126,39 @@ struct NowPlayingView: View {
 
     private func titleRow(for item: BaseItemDto) -> some View {
         HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.Name)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .lineLimit(2)
+            Menu {
                 if let artist = item.AlbumArtist ?? item.Artists?.first {
-                    Text(artist)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    Button {
+                        Task { await goToArtist(for: item) }
+                    } label: {
+                        Text("Go to Artist")
+                        Text(artist)
+                    }
+                }
+                if let album = item.Album {
+                    Button {
+                        Task { await goToAlbum(for: item) }
+                    } label: {
+                        Text("Go to Album")
+                        Text(album)
+                    }
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.Name)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    if let artist = item.AlbumArtist ?? item.Artists?.first {
+                        Text(artist)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
+            .buttonStyle(.plain)
 
             Spacer()
 

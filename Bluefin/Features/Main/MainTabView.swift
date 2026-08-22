@@ -11,24 +11,28 @@ import SwiftUI
 struct MainTabView: View {
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var navigator = AppNavigator.shared
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            TabView {
+            TabView(selection: $navigator.selectedTab) {
                 HomeView()
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
+                .tag(AppTab.home)
 
                 LibraryView()
                 .tabItem {
                     Label("Library", systemImage: "music.note.list")
                 }
+                .tag(AppTab.library)
 
                 SearchView()
                 .tabItem {
                     Label("Search", systemImage: "magnifyingglass")
                 }
+                .tag(AppTab.search)
 
                 NavigationStack {
                     SettingsView()
@@ -36,6 +40,7 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
+                .tag(AppTab.settings)
             }
 
             if player.currentItem != nil {
