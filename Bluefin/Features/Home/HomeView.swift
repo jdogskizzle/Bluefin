@@ -11,13 +11,19 @@ import SwiftUI
 struct HomeView: View {
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
     @ObservedObject private var navigator = AppNavigator.shared
+    @ObservedObject private var lidarrClient = LidarrAPIClient.shared
     @State private var pinnedPlaylist: BaseItemDto?
     @State private var pinnedPlaylistSongs: [BaseItemDto] = []
+    @State private var upcomingReleases: [LidarrCalendarItem] = []
 
     var body: some View {
         NavigationStack(path: $navigator.homePath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if !upcomingReleases.isEmpty {
+                        upcomingReleasesSection
+                    }
+
                     if let pinnedPlaylist {
                         pinnedSection(for: pinnedPlaylist)
                     } else {
@@ -40,10 +46,21 @@ struct HomeView: View {
         .task(id: pinnedStore.pinnedPlaylistId) {
             await loadPinnedPlaylist()
         }
+        .task(id: lidarrClient.isConnected) {
+            await loadUpcomingReleases()
+        }
         .onReceive(LibraryCacheChangeCenter.didChange) { key in
             guard let id = pinnedStore.pinnedPlaylistId, key == "playlists" || key == "playlistSongs:\(id)" else { return }
             Task { await loadPinnedPlaylist() }
         }
+    }
+
+    private func loadUpcomingReleases() async {
+        guard lidarrClient.isConnected else {
+            upcomingReleases = []
+            return
+        }
+        upcomingReleases = (try? await lidarrClient.fetchUpcomingReleases()) ?? []
     }
 
     private func loadPinnedPlaylist() async {
@@ -98,6 +115,53 @@ struct HomeView: View {
 
             PlayShuffleBar(songs: pinnedPlaylistSongs)
         }
+    }
+
+    private var upcomingReleasesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Upcoming Releases")
+                .font(.headline)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(upcomingReleases) { release in
+                        upcomingReleaseCard(release)
+                    }
+                }
+            }
+        }
+    }
+
+    private func upcomingReleaseCard(_ release: LidarrCalendarItem) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            AsyncImage(url: release.coverImageURL(serverURL: lidarrClient.serverURL, apiKey: lidarrClient.apiKey)) { phase in
+                if let image = phase.image {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.15))
+                        .overlay(Image(systemName: "opticaldisc").foregroundStyle(.secondary))
+                }
+            }
+            .frame(width: 120, height: 120)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Text(release.title)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Text(release.artistName)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if let releaseDate = release.releaseDate {
+                Text(releaseDate.formatted(.dateTime.month(.abbreviated).day()))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 120)
     }
 }
 

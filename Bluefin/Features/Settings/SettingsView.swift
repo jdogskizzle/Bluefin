@@ -13,6 +13,7 @@ struct SettingsView: View {
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
     @ObservedObject private var syncManager = LibrarySyncManager.shared
     @ObservedObject private var eqSettings = EqualizerSettings.shared
+    @ObservedObject private var lidarrClient = LidarrAPIClient.shared
     @State private var showSync = false
 
     var body: some View {
@@ -122,6 +123,17 @@ struct SettingsView: View {
                         Text(serverURL.absoluteString)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                    }
+                }
+                NavigationLink {
+                    LidarrSettingsView()
+                } label: {
+                    HStack {
+                        Text("Lidarr")
+                        Spacer()
+                        Text(lidarrClient.isConnected ? "Connected" : "Not Connected")
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
                     }
                 }
                 Button("Sign Out", role: .destructive) {
