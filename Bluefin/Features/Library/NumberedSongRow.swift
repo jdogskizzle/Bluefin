@@ -15,6 +15,7 @@ struct NumberedSongRow: View {
     var isInSubqueue: Bool = false
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var downloadManager = DownloadManager.shared
+    @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
 
     private var isNowPlaying: Bool {
         player.currentItem?.Id == song.Id
@@ -50,6 +51,12 @@ struct NumberedSongRow: View {
                 Image(systemName: "text.insert")
                     .font(.caption)
                     .foregroundStyle(Color.accentColor)
+            }
+
+            if pinnedStore.isSongPinned(song.Id) {
+                Image(systemName: "pin.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             downloadIcon

@@ -13,6 +13,7 @@ struct LibraryItemRow: View {
     var isPinned: Bool = false
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var downloadManager = DownloadManager.shared
+    @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
 
     private var isNowPlaying: Bool {
         item.ItemType == "Audio" && player.currentItem?.Id == item.Id
@@ -51,6 +52,11 @@ struct LibraryItemRow: View {
     private var trailingContent: some View {
         HStack(spacing: 6) {
             if item.ItemType == "Audio" {
+                if pinnedStore.isSongPinned(item.Id) {
+                    Image(systemName: "pin.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 downloadIcon
                 if let duration = item.formattedDuration {
                     Text(duration)
