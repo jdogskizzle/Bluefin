@@ -25,6 +25,7 @@ struct RemovableFromPlaylist {
 struct SongPlaylistMenuItems: View {
     let song: BaseItemDto
     @Binding var showPicker: Bool
+    @Binding var showDetails: Bool
     var removableFrom: RemovableFromPlaylist? = nil
     var isAlbumContext: Bool = false
     var showsGoToLinks: Bool = true
@@ -69,6 +70,11 @@ struct SongPlaylistMenuItems: View {
                 Label("Remove from Playlist", systemImage: "minus.circle")
             }
         }
+        Button {
+            showDetails = true
+        } label: {
+            Label("Details", systemImage: "info.circle")
+        }
     }
 
     private func goToArtist() async {
@@ -102,12 +108,13 @@ private struct SongActionsModifier: ViewModifier {
     var removableFrom: RemovableFromPlaylist? = nil
     var isAlbumContext: Bool = false
     @State private var showPicker = false
+    @State private var showDetails = false
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
 
     func body(content: Content) -> some View {
         content
             .contextMenu {
-                SongPlaylistMenuItems(song: song, showPicker: $showPicker, removableFrom: removableFrom, isAlbumContext: isAlbumContext)
+                SongPlaylistMenuItems(song: song, showPicker: $showPicker, showDetails: $showDetails, removableFrom: removableFrom, isAlbumContext: isAlbumContext)
             }
             .swipeActions(edge: .leading) {
                 Button {
@@ -135,6 +142,9 @@ private struct SongActionsModifier: ViewModifier {
             }
             .sheet(isPresented: $showPicker) {
                 PlaylistPickerView(song: song)
+            }
+            .sheet(isPresented: $showDetails) {
+                SongDetailsView(song: song)
             }
     }
 }

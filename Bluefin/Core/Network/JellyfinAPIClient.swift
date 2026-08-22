@@ -296,11 +296,15 @@ class JellyfinAPIClient: ObservableObject {
         return response.Items
     }
 
-    func fetchPlaylistItems(playlistId: String) async throws -> [BaseItemDto] {
+    func fetchPlaylistItems(playlistId: String, fields: String? = nil) async throws -> [BaseItemDto] {
         guard let userId else { throw JellyfinError.invalidResponse }
+        var queryItems = [URLQueryItem(name: "userId", value: userId)]
+        if let fields {
+            queryItems.append(URLQueryItem(name: "Fields", value: fields))
+        }
         let response: ItemsResponse = try await performGet(
             path: "Playlists/\(playlistId)/Items",
-            queryItems: [URLQueryItem(name: "userId", value: userId)]
+            queryItems: queryItems
         )
         return response.Items
     }

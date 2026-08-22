@@ -13,6 +13,7 @@ struct NowPlayingView: View {
     @State private var showQueue = false
     @State private var showLyrics = false
     @State private var showPlaylistPicker = false
+    @State private var showDetails = false
     @State private var hasLyrics = false
     @Environment(\.dismiss) private var dismiss
 
@@ -69,6 +70,11 @@ struct NowPlayingView: View {
         .sheet(isPresented: $showPlaylistPicker) {
             if let item = player.currentItem {
                 PlaylistPickerView(song: item)
+            }
+        }
+        .sheet(isPresented: $showDetails) {
+            if let item = player.currentItem {
+                SongDetailsView(song: item)
             }
         }
         .task(id: player.currentItem?.Id) {
@@ -172,7 +178,7 @@ struct NowPlayingView: View {
                 }
 
                 Menu {
-                    SongPlaylistMenuItems(song: item, showPicker: $showPlaylistPicker, showsGoToLinks: false)
+                    SongPlaylistMenuItems(song: item, showPicker: $showPlaylistPicker, showDetails: $showDetails, showsGoToLinks: false)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.title3)

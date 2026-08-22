@@ -35,12 +35,35 @@ struct BaseItemDto: Codable, Identifiable, Hashable {
     /// (Jellyfin omits it by default). `ProductionYear` alone isn't precise enough to sort albums
     /// released in the same year correctly — see `premiereDate` for the parsed value.
     let PremiereDate: String?
+    /// ISO 8601 date-time string of when this item was added to the Jellyfin library — only present
+    /// when explicitly requested via `Fields=DateCreated`. Shown as "Date Added" in a song's details.
+    let DateCreated: String?
+    /// Only present when explicitly requested via `Fields=MediaSources` — carries the technical
+    /// audio details (codec/bitrate/sample rate) shown in a song's details.
+    let MediaSources: [MediaSourceInfo]?
 
     var id: String { Id }
 
     enum CodingKeys: String, CodingKey {
-        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags, PlaylistItemId, PremiereDate
+        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags, PlaylistItemId, PremiereDate, DateCreated, MediaSources
         case ItemType = "Type"
+    }
+}
+
+struct MediaSourceInfo: Codable, Hashable {
+    let Container: String?
+    let MediaStreams: [MediaStreamInfo]?
+}
+
+struct MediaStreamInfo: Codable, Hashable {
+    let StreamType: String?
+    let Codec: String?
+    let BitRate: Int?
+    let SampleRate: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case StreamType = "Type"
+        case Codec, BitRate, SampleRate
     }
 }
 
@@ -81,6 +104,21 @@ extension BaseItemDto {
 
     private static let premiereDateFormatter = ISO8601DateFormatter()
 
+    /// Parsed `DateCreated` — when this item was added to the Jellyfin library.
+    var dateCreated: Date? {
+        guard let DateCreated else { return nil }
+        if let date = Self.premiereDateFormatterWithFractionalSeconds.date(from: DateCreated) {
+            return date
+        }
+        return Self.premiereDateFormatter.date(from: DateCreated)
+    }
+
+    /// The first audio stream of the first media source — a song has exactly one of each in
+    /// practice, so there's no need to pick among multiple.
+    var primaryAudioStream: MediaStreamInfo? {
+        MediaSources?.first?.MediaStreams?.first { $0.StreamType == "Audio" }
+    }
+
     /// A copy with a different `ChildCount` — used to keep a playlist's own cached record (its
     /// track count) in step immediately after adding/removing a song, without waiting for the next
     /// full library sync to refetch it from the server.
@@ -90,7 +128,7 @@ extension BaseItemDto {
             AlbumArtist: AlbumArtist, Artists: Artists, Album: Album, AlbumId: AlbumId,
             ProductionYear: ProductionYear, RunTimeTicks: RunTimeTicks, IndexNumber: IndexNumber,
             ChildCount: newChildCount, ImageTags: ImageTags, PlaylistItemId: PlaylistItemId,
-            PremiereDate: PremiereDate
+            PremiereDate: PremiereDate, DateCreated: DateCreated, MediaSources: MediaSources
         )
     }
 }
