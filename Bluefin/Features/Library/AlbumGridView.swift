@@ -50,7 +50,7 @@ struct AlbumGridView: View {
                     .padding()
                 }
                 .scrollIndicators(.hidden)
-                .ignoresSafeArea(edges: .top)
+                .ignoresSafeArea(edges: bannerItemId != nil ? .top : [])
                 .avoidsMiniPlayer()
             }
         }

@@ -51,7 +51,7 @@ struct QueueView: View {
                                         Button(role: .destructive) {
                                             AudioPlayerManager.shared.removeFromQueue(at: entry.index)
                                         } label: {
-                                            Label("Remove", systemImage: "trash")
+                                            Image(systemName: "trash")
                                         }
                                     }
                                 }

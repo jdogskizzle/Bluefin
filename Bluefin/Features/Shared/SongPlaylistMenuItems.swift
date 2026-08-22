@@ -71,7 +71,7 @@ private struct SongActionsModifier: ViewModifier {
                 Button {
                     AudioPlayerManager.shared.addToSubqueue(song)
                 } label: {
-                    Label("Add to Queue", systemImage: "text.insert")
+                    Image(systemName: "text.insert")
                 }
                 .tint(.orange)
             }
@@ -80,14 +80,14 @@ private struct SongActionsModifier: ViewModifier {
                     Button {
                         PlaylistActionService.addSong(song, toPlaylistId: pinnedId, playlistName: pinnedName)
                     } label: {
-                        Label("Add to \(pinnedName)", systemImage: "pin")
+                        Image(systemName: "pin")
                     }
                     .tint(.blue)
                 }
                 Button {
                     showPicker = true
                 } label: {
-                    Label("Add to Playlist", systemImage: "text.badge.plus")
+                    Image(systemName: "text.badge.plus")
                 }
                 .tint(.indigo)
             }
