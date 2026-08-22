@@ -41,6 +41,9 @@ struct LibraryView: View {
                         NavigationLink(value: LibraryRoute.favorites) {
                             Label("Favorites", systemImage: "heart")
                         }
+                        NavigationLink(value: LibraryRoute.genres) {
+                            Label("Genres", systemImage: "guitars")
+                        }
                     }
                 }
             }

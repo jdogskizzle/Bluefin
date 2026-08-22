@@ -296,6 +296,21 @@ class JellyfinAPIClient: ObservableObject {
         return response.Items
     }
 
+    /// Genres aren't real library items, so they don't come back from `Users/{userId}/Items` even
+    /// with `IncludeItemTypes=MusicGenre` — Jellyfin exposes them only through this dedicated
+    /// endpoint instead.
+    func fetchGenres(parentId: String) async throws -> [BaseItemDto] {
+        guard let userId else { throw JellyfinError.invalidResponse }
+        let response: ItemsResponse = try await performGet(
+            path: "MusicGenres",
+            queryItems: [
+                URLQueryItem(name: "userId", value: userId),
+                URLQueryItem(name: "ParentId", value: parentId)
+            ]
+        )
+        return response.Items
+    }
+
     func fetchPlaylistItems(playlistId: String, fields: String? = nil) async throws -> [BaseItemDto] {
         guard let userId else { throw JellyfinError.invalidResponse }
         var queryItems = [URLQueryItem(name: "userId", value: userId)]

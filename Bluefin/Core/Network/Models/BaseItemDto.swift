@@ -44,11 +44,14 @@ struct BaseItemDto: Codable, Identifiable, Hashable {
     /// Only present when explicitly requested via `Fields=UserData` — carries this user's
     /// favorite/played state for the item.
     let UserData: UserDataDto?
+    /// Only present when explicitly requested via `Fields=Genres` — an album's genre names, used
+    /// to group albums by genre locally during sync rather than issuing one request per genre.
+    let Genres: [String]?
 
     var id: String { Id }
 
     enum CodingKeys: String, CodingKey {
-        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags, PlaylistItemId, PremiereDate, DateCreated, MediaSources, UserData
+        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags, PlaylistItemId, PremiereDate, DateCreated, MediaSources, UserData, Genres
         case ItemType = "Type"
     }
 }
@@ -135,7 +138,8 @@ extension BaseItemDto {
             AlbumArtist: AlbumArtist, Artists: Artists, Album: Album, AlbumId: AlbumId,
             ProductionYear: ProductionYear, RunTimeTicks: RunTimeTicks, IndexNumber: IndexNumber,
             ChildCount: newChildCount, ImageTags: ImageTags, PlaylistItemId: PlaylistItemId,
-            PremiereDate: PremiereDate, DateCreated: DateCreated, MediaSources: MediaSources, UserData: UserData
+            PremiereDate: PremiereDate, DateCreated: DateCreated, MediaSources: MediaSources, UserData: UserData,
+            Genres: Genres
         )
     }
 }

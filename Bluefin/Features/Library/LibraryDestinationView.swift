@@ -26,12 +26,16 @@ struct LibraryDestinationView: View {
             DownloadsView()
         case .favorites:
             FavoritesView()
+        case .genres:
+            GenreListView(cacheKey: "genres:\(apiClient.selectedLibraryId ?? "")")
         case .artistAlbums(let artist):
             AlbumGridView(title: artist.Name, subtitle: .year, bannerItemId: artist.Id, cacheKey: "artistAlbums:\(artist.Id)")
         case .albumSongs(let album):
             AlbumDetailView(album: album)
         case .playlistSongs(let playlist):
             PlaylistDetailView(playlist: playlist)
+        case .genreAlbums(let genre):
+            AlbumGridView(title: genre.Name, subtitle: .artist, cacheKey: "genreAlbums:\(genre.Id)")
         }
     }
 }

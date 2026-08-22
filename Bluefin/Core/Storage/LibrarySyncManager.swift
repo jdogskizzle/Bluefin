@@ -30,6 +30,7 @@ final class LibrarySyncManager: ObservableObject {
         case playlists = "Playlists"
         case playlistSongs = "Playlist Songs"
         case artistAlbums = "Artist Albums"
+        case genres = "Genres"
         case artwork = "Artwork"
         case lyrics = "Lyrics"
     }
@@ -91,7 +92,7 @@ final class LibrarySyncManager: ObservableObject {
             let albums = try await JellyfinAPIClient.shared.fetchItems(
                 parentId: libraryId,
                 includeItemTypes: "MusicAlbum",
-                fields: "PremiereDate"
+                fields: "PremiereDate,Genres"
             )
             await LibraryCache.shared.store(albums, for: "albums:\(libraryId)")
 
@@ -133,7 +134,18 @@ final class LibrarySyncManager: ObservableObject {
                 await LibraryCache.shared.store(filtered, for: "artistAlbums:\(artist.Id)")
             }
 
-            var artworkTargets = (artists + albums + playlists).map { ArtworkTarget(itemId: $0.Id, imageType: "Primary") }
+            // Genre-to-album grouping is derived locally from the albums already fetched above
+            // (each album's `Genres` names), the same way `albumSongs` is derived from `songs` —
+            // no need for one request per genre.
+            phase = .syncing(step: .genres, completed: 0, total: 1)
+            let genres = try await JellyfinAPIClient.shared.fetchGenres(parentId: libraryId)
+            await LibraryCache.shared.store(genres, for: "genres:\(libraryId)")
+            for genre in genres {
+                let genreAlbums = albums.filter { $0.Genres?.contains(genre.Name) == true }
+                await LibraryCache.shared.store(genreAlbums, for: "genreAlbums:\(genre.Id)")
+            }
+
+            var artworkTargets = (artists + albums + playlists + genres).map { ArtworkTarget(itemId: $0.Id, imageType: "Primary") }
             artworkTargets += artists.map { ArtworkTarget(itemId: $0.Id, imageType: "Backdrop") }
             await forEachConcurrently(artworkTargets, step: .artwork) { target in
                 await ImageCache.shared.fetchAndStore(itemId: target.itemId, imageType: target.imageType)

@@ -32,6 +32,7 @@ struct LibraryNavigableRow: View {
         case "MusicArtist": return .artistAlbums(item)
         case "MusicAlbum": return .albumSongs(item)
         case "Playlist": return .playlistSongs(item)
+        case "MusicGenre": return .genreAlbums(item)
         default: return nil
         }
     }

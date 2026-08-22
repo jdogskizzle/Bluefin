@@ -118,6 +118,7 @@ struct LibraryItemRow: View {
         case "MusicAlbum": return "square.stack"
         case "Audio": return "music.note"
         case "Playlist": return "music.note.list"
+        case "MusicGenre": return "guitars"
         default: return "questionmark"
         }
     }
