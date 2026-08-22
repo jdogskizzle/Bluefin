@@ -74,23 +74,13 @@ struct AlbumDetailView: View {
         .padding(.vertical, 12)
     }
 
-    /// Artwork + title + artist name, tapping through to the artist's page — once `artist` has
-    /// resolved (see `resolveArtist()`; the album record itself only carries the artist's *name*,
-    /// not an id, so it's looked up from the synced `LibraryCache` artist list). Falls back to
-    /// plain, non-interactive content if there's no artist name or the lookup doesn't find a match.
     @ViewBuilder
     private var artistLink: some View {
         if let artist {
-            // A `NavigationLink` used directly as row content gets an automatic disclosure chevron
-            // from `List` — not wanted on this header. Keeping the visible content plain and driving
-            // the actual navigation from an invisible `NavigationLink` behind it (sized to match via
-            // `Color.clear`) avoids that while still pushing to the artist's page on tap.
             artworkAndTitle
-                .background {
-                    NavigationLink(value: LibraryRoute.artistAlbums(artist)) {
-                        Color.clear
-                    }
-                    .opacity(0)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    AppNavigator.shared.navigate(to: .artistAlbums(artist))
                 }
         } else {
             artworkAndTitle
