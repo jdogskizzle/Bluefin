@@ -44,6 +44,32 @@ struct SettingsView: View {
                         }
                     }
                 }
+                if apiClient.selectedLibraryId != nil {
+                    HStack {
+                        Text("Artists")
+                        Spacer()
+                        Text("\(viewModel.artistCount)")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Albums")
+                        Spacer()
+                        Text("\(viewModel.albumCount)")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Songs")
+                        Spacer()
+                        Text("\(viewModel.songCount)")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Playlists")
+                        Spacer()
+                        Text("\(viewModel.playlistCount)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Section("Library Sync") {
@@ -164,13 +190,17 @@ struct SettingsView: View {
             await viewModel.refreshCacheSize()
             await viewModel.refreshLibrarySize()
             await viewModel.refreshDownloadsSize()
+            await viewModel.refreshLibraryCounts()
         }
         .sheet(isPresented: $showSync) {
             LibrarySyncView()
         }
         .onChange(of: showSync) { _, isShowing in
             guard !isShowing else { return }
-            Task { await viewModel.refreshLibrarySize() }
+            Task {
+                await viewModel.refreshLibrarySize()
+                await viewModel.refreshLibraryCounts()
+            }
         }
     }
 }

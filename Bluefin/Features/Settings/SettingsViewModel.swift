@@ -20,6 +20,10 @@ final class SettingsViewModel: ObservableObject {
     @Published var downloadsSizeBytes: Int64 = 0
     @Published var downloadedSongCount: Int = 0
     @Published var isClearingDownloads = false
+    @Published var artistCount: Int = 0
+    @Published var albumCount: Int = 0
+    @Published var songCount: Int = 0
+    @Published var playlistCount: Int = 0
     @Published var cacheLimitBytes: Int64 = CacheManager.cacheLimitBytes {
         didSet {
             guard cacheLimitBytes != oldValue else { return }
@@ -82,6 +86,22 @@ final class SettingsViewModel: ObservableObject {
         await DownloadManager.shared.refreshDownloadedIds()
         await refreshDownloadsSize()
         isClearingDownloads = false
+    }
+
+    /// Counts from the synced library (see `LibrarySyncManager`) — zero until the first sync, and
+    /// only refreshed on demand rather than kept live, matching how `refreshLibrarySize()` works.
+    func refreshLibraryCounts() async {
+        guard let libraryId = apiClient.selectedLibraryId else {
+            artistCount = 0
+            albumCount = 0
+            songCount = 0
+            playlistCount = 0
+            return
+        }
+        artistCount = await LibraryCache.shared.items(for: "artists:\(libraryId)")?.count ?? 0
+        albumCount = await LibraryCache.shared.items(for: "albums:\(libraryId)")?.count ?? 0
+        songCount = await LibraryCache.shared.items(for: "songs:\(libraryId)")?.count ?? 0
+        playlistCount = await LibraryCache.shared.items(for: "playlists")?.count ?? 0
     }
 
     private static let librariesCacheKey = "musicLibraries"
