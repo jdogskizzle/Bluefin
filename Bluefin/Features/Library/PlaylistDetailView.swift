@@ -82,7 +82,7 @@ struct PlaylistDetailView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)
-                Text("\(viewModel.items.count) songs")
+                Text(summaryText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -94,5 +94,16 @@ struct PlaylistDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
+    }
+
+    private var summaryText: String {
+        let count = viewModel.items.count
+        let songLabel = count == 1 ? "song" : "songs"
+        let totalTicks = viewModel.items.compactMap { $0.RunTimeTicks }.reduce(0, +)
+        let totalSeconds = Int(totalTicks / 10_000_000)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let durationText = hours > 0 ? "\(hours) hr \(minutes) min" : "\(minutes) min"
+        return "\(count) \(songLabel), \(durationText)"
     }
 }
