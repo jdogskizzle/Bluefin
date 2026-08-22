@@ -38,6 +38,9 @@ struct LibraryView: View {
                         NavigationLink(value: LibraryRoute.downloads) {
                             Label("Downloads", systemImage: "arrow.down.circle")
                         }
+                        NavigationLink(value: LibraryRoute.favorites) {
+                            Label("Favorites", systemImage: "heart")
+                        }
                     }
                 }
             }

@@ -56,7 +56,7 @@ final class SearchViewModel: ObservableObject {
                 parentId: apiClient.selectedLibraryId,
                 includeItemTypes: "Audio",
                 searchTerm: term,
-                fields: "DateCreated,MediaSources"
+                fields: "DateCreated,MediaSources,UserData"
             )
 
             let (fetchedArtists, fetchedAlbums, fetchedSongs) = try await (artistsResult, albumsResult, songsResult)

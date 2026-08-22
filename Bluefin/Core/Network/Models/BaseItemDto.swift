@@ -41,13 +41,20 @@ struct BaseItemDto: Codable, Identifiable, Hashable {
     /// Only present when explicitly requested via `Fields=MediaSources` — carries the technical
     /// audio details (codec/bitrate/sample rate) shown in a song's details.
     let MediaSources: [MediaSourceInfo]?
+    /// Only present when explicitly requested via `Fields=UserData` — carries this user's
+    /// favorite/played state for the item.
+    let UserData: UserDataDto?
 
     var id: String { Id }
 
     enum CodingKeys: String, CodingKey {
-        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags, PlaylistItemId, PremiereDate, DateCreated, MediaSources
+        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags, PlaylistItemId, PremiereDate, DateCreated, MediaSources, UserData
         case ItemType = "Type"
     }
+}
+
+struct UserDataDto: Codable, Hashable {
+    let IsFavorite: Bool?
 }
 
 struct MediaSourceInfo: Codable, Hashable {
@@ -128,7 +135,7 @@ extension BaseItemDto {
             AlbumArtist: AlbumArtist, Artists: Artists, Album: Album, AlbumId: AlbumId,
             ProductionYear: ProductionYear, RunTimeTicks: RunTimeTicks, IndexNumber: IndexNumber,
             ChildCount: newChildCount, ImageTags: ImageTags, PlaylistItemId: PlaylistItemId,
-            PremiereDate: PremiereDate, DateCreated: DateCreated, MediaSources: MediaSources
+            PremiereDate: PremiereDate, DateCreated: DateCreated, MediaSources: MediaSources, UserData: UserData
         )
     }
 }

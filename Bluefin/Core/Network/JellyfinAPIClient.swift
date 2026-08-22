@@ -366,6 +366,35 @@ class JellyfinAPIClient: ObservableObject {
         }
     }
 
+    func markFavorite(itemId: String) async throws {
+        try await setFavorite(itemId: itemId, isFavorite: true)
+    }
+
+    func unmarkFavorite(itemId: String) async throws {
+        try await setFavorite(itemId: itemId, isFavorite: false)
+    }
+
+    private func setFavorite(itemId: String, isFavorite: Bool) async throws {
+        guard let serverURL, let userId else { throw JellyfinError.invalidResponse }
+        let url = serverURL.appendingPathComponent("Users/\(userId)/FavoriteItems/\(itemId)")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = isFavorite ? "POST" : "DELETE"
+        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        request.timeoutInterval = 10
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw JellyfinError.invalidResponse }
+
+        if httpResponse.statusCode == 401 {
+            await MainActor.run { self.logout() }
+            throw JellyfinError.sessionExpired
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw JellyfinError.serverError(httpResponse.statusCode)
+        }
+    }
+
     func fetchLyrics(itemId: String) async throws -> [LyricLine] {
         let response: LyricsResponse = try await performGet(path: "Audio/\(itemId)/Lyrics")
         return response.Lyrics

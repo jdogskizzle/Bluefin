@@ -10,6 +10,7 @@ import SwiftUI
 
 struct NowPlayingView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var favoritesStore = FavoritesStore.shared
     @State private var showQueue = false
     @State private var showLyrics = false
     @State private var showPlaylistPicker = false
@@ -170,10 +171,11 @@ struct NowPlayingView: View {
 
             HStack(spacing: 16) {
                 Button {
-                    // Favorite — designed later.
+                    favoritesStore.toggleFavorite(item)
                 } label: {
-                    Image(systemName: "heart")
+                    Image(systemName: favoritesStore.isFavorite(item.Id) ? "heart.fill" : "heart")
                         .font(.title3)
+                        .foregroundStyle(favoritesStore.isFavorite(item.Id) ? Color.red : Color.primary)
                         .frame(width: 24, height: 24)
                 }
 

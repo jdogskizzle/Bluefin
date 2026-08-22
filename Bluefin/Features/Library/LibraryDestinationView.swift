@@ -24,6 +24,8 @@ struct LibraryDestinationView: View {
             LibraryListView(title: "Playlists", itemType: .playlist, cacheKey: "playlists")
         case .downloads:
             DownloadsView()
+        case .favorites:
+            FavoritesView()
         case .artistAlbums(let artist):
             AlbumGridView(title: artist.Name, subtitle: .year, bannerItemId: artist.Id, cacheKey: "artistAlbums:\(artist.Id)")
         case .albumSongs(let album):

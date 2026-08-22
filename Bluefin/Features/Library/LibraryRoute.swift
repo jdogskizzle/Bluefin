@@ -13,6 +13,7 @@ enum LibraryRoute: Hashable {
     case songs
     case playlists
     case downloads
+    case favorites
     case artistAlbums(BaseItemDto)
     case albumSongs(BaseItemDto)
     case playlistSongs(BaseItemDto)

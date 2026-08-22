@@ -99,7 +99,7 @@ final class LibrarySyncManager: ObservableObject {
             let songs = try await JellyfinAPIClient.shared.fetchItems(
                 parentId: libraryId,
                 includeItemTypes: "Audio",
-                fields: "DateCreated,MediaSources"
+                fields: "DateCreated,MediaSources,UserData"
             )
             await LibraryCache.shared.store(songs, for: "songs:\(libraryId)")
 
@@ -116,7 +116,7 @@ final class LibrarySyncManager: ObservableObject {
             await forEachConcurrently(playlists, step: .playlistSongs) { playlist in
                 guard let items = try? await JellyfinAPIClient.shared.fetchPlaylistItems(
                     playlistId: playlist.Id,
-                    fields: "DateCreated,MediaSources"
+                    fields: "DateCreated,MediaSources,UserData"
                 ) else { return }
                 await LibraryCache.shared.store(items, for: "playlistSongs:\(playlist.Id)")
             }
@@ -147,6 +147,7 @@ final class LibrarySyncManager: ObservableObject {
 
             lastSyncedAt = .now
             UserDefaults.standard.set(lastSyncedAt, forKey: Self.lastSyncedDefaultsKey)
+            await FavoritesStore.shared.refreshFromSync()
             phase = .finished
         } catch {
             phase = .failed(error.localizedDescription)
