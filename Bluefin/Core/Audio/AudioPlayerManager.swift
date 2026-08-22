@@ -16,7 +16,7 @@ import UIKit
 final class AudioPlayerManager: NSObject, ObservableObject {
     static let shared = AudioPlayerManager()
 
-    @Published private(set) var queue: [BaseItemDto] = []
+    @Published private(set) var queue: [BaseItemDto] = [] { didSet { persistPlaybackState() } }
     /// A stable id per queue *slot*, parallel to `queue` (same length, same order) — not per song,
     /// since the same song can appear in the queue more than once. `QueueView` uses this instead of
     /// position as its `ForEach` identity, so a reorder is diffed as "this row moved" rather than
@@ -26,14 +26,18 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     /// inserting/removing an entry, or (in `moveInQueue`) moving an id alongside its entry so a
     /// reordered row keeps the *same* id rather than being treated as removed-and-reinserted.
     @Published private(set) var queueEntryIDs: [UUID] = []
-    @Published private(set) var currentIndex: Int = 0
+    /// `didSet` here (and on `currentIndex`/`subqueueCount` below) is what makes persistence
+    /// automatic for every mutation path — `play(queue:)`, `addToSubqueue`, `removeFromQueue`,
+    /// `applyQueueReorder`, skip/jump — rather than needing a `persistPlaybackState()` call added
+    /// at each one individually and risking a future mutation path forgetting it.
+    @Published private(set) var currentIndex: Int = 0 { didSet { persistPlaybackState() } }
     @Published private(set) var isPlaying: Bool = false
     @Published private(set) var currentTime: TimeInterval = 0
     /// How many of the entries immediately after `currentIndex` were manually queued via "Add to
     /// Queue" — always the contiguous run `[currentIndex+1, currentIndex+1+subqueueCount)`. That
     /// invariant is what makes a plain count sufficient instead of tracking membership per item:
     /// every mutation (add/remove/reorder) is defined in terms of this same contiguous range.
-    @Published private(set) var subqueueCount: Int = 0
+    @Published private(set) var subqueueCount: Int = 0 { didSet { persistPlaybackState() } }
 
     var currentItem: BaseItemDto? {
         queue.indices.contains(currentIndex) ? queue[currentIndex] : nil
@@ -63,12 +67,70 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     private let player = AVPlayer()
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
+    private var backgroundObserver: NSObjectProtocol?
+
+    private struct PersistedPlaybackState: Codable {
+        let queue: [BaseItemDto]
+        let currentIndex: Int
+        let currentTime: TimeInterval
+        let subqueueCount: Int
+    }
+
+    private static let playbackStateDefaultsKey = "com.bluefin.playbackState"
 
     private override init() {
         super.init()
         configureAudioSession()
         configureRemoteCommandCenter()
         addPeriodicTimeObserver()
+        observeAppBackgrounding()
+        restorePlaybackState()
+    }
+
+    /// Backgrounding is the reliable "the user is done with the app for now" signal — a force-quit
+    /// from the app switcher requires backgrounding first, so this reliably catches it. Queue/index/
+    /// subqueue changes persist immediately on their own via `didSet` above; `currentTime` doesn't
+    /// (it'd mean a UserDefaults write ~2x/second while playing), so this is what captures a
+    /// reasonably fresh position for it.
+    private func observeAppBackgrounding() {
+        #if canImport(UIKit)
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor [weak self] in
+                self?.persistPlaybackState()
+            }
+        }
+        #endif
+    }
+
+    private func persistPlaybackState() {
+        guard queue.indices.contains(currentIndex) else {
+            UserDefaults.standard.removeObject(forKey: Self.playbackStateDefaultsKey)
+            return
+        }
+        let state = PersistedPlaybackState(queue: queue, currentIndex: currentIndex, currentTime: currentTime, subqueueCount: subqueueCount)
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        UserDefaults.standard.set(data, forKey: Self.playbackStateDefaultsKey)
+    }
+
+    /// Restores the last session's queue and position, prepared paused — resuming playback
+    /// automatically on launch would be a surprising thing for the app to do on its own.
+    private func restorePlaybackState() {
+        guard let data = UserDefaults.standard.data(forKey: Self.playbackStateDefaultsKey),
+              let state = try? JSONDecoder().decode(PersistedPlaybackState.self, from: data),
+              state.queue.indices.contains(state.currentIndex) else { return }
+
+        // Set first: `queue`/`currentIndex`/`subqueueCount` below each redundantly re-persist the
+        // whole state via `didSet` as they're assigned, so `currentTime` needs to already be correct
+        // before that happens rather than briefly writing back a stale 0.
+        currentTime = state.currentTime
+        replaceQueue(state.queue)
+        currentIndex = state.currentIndex
+        subqueueCount = state.subqueueCount
+        loadCurrentItem(autoplay: false, resumeAt: state.currentTime)
     }
 
     func play(queue newQueue: [BaseItemDto], startAt index: Int) {
@@ -143,6 +205,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         player.pause()
         isPlaying = false
         updateNowPlayingPlaybackState()
+        persistPlaybackState()
     }
 
     func resume() {
@@ -179,10 +242,10 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         updateNowPlayingElapsedTime()
     }
 
-    private func loadCurrentItem(autoplay: Bool) {
+    private func loadCurrentItem(autoplay: Bool, resumeAt: TimeInterval? = nil) {
         guard let item = currentItem else { return }
         removeEndObserver()
-        currentTime = 0
+        currentTime = resumeAt ?? 0
         updateNowPlayingInfo()
 
         Task {
@@ -193,6 +256,10 @@ final class AudioPlayerManager: NSObject, ObservableObject {
             let playerItem = AVPlayerItem(url: url)
             self.player.replaceCurrentItem(with: playerItem)
             self.addEndObserver(for: playerItem)
+
+            if let resumeAt {
+                self.seek(to: resumeAt)
+            }
 
             if autoplay {
                 self.player.play()
