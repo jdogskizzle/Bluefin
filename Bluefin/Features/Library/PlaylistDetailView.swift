@@ -24,6 +24,7 @@ struct PlaylistDetailView: View {
     @State private var showPhotoPicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var imageVersion = UUID()
+    @State private var showRemoveDownloadConfirmation = false
 
     init(playlist: BaseItemDto) {
         self.playlist = playlist
@@ -142,7 +143,7 @@ struct PlaylistDetailView: View {
                     } label: {
                         Label("Add to Queue", systemImage: "text.insert")
                     }
-                    ContainerDownloadButton(songs: viewModel.items)
+                    ContainerDownloadButton(songs: viewModel.items, showRemoveConfirmation: $showRemoveDownloadConfirmation)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -164,6 +165,7 @@ struct PlaylistDetailView: View {
             }
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
+        .confirmRemoveDownload(songs: viewModel.items, isPresented: $showRemoveDownloadConfirmation)
         .onChange(of: selectedPhotoItem) { _, newItem in
             Task { await applyNewImage(newItem) }
         }

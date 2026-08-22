@@ -21,6 +21,7 @@ struct AlbumGridView: View {
     @ObservedObject private var sortPreference = AlbumSortPreference.shared
     @ObservedObject private var releaseCache = LidarrReleaseCache.shared
     @State private var artistSongs: [BaseItemDto] = []
+    @State private var showRemoveDownloadConfirmation = false
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
@@ -117,6 +118,7 @@ struct AlbumGridView: View {
                 }
             }
         }
+        .confirmRemoveDownload(songs: artistSongs, isPresented: $showRemoveDownloadConfirmation)
         .task {
             await viewModel.load()
         }
@@ -131,7 +133,7 @@ struct AlbumGridView: View {
                 Text("Release Date (Oldest First)").tag(AlbumSortOrder.releaseDateAscending)
                 Text("Release Date (Newest First)").tag(AlbumSortOrder.releaseDateDescending)
             }
-            ContainerDownloadButton(songs: artistSongs)
+            ContainerDownloadButton(songs: artistSongs, showRemoveConfirmation: $showRemoveDownloadConfirmation)
         } label: {
             Image(systemName: "ellipsis.circle")
         }

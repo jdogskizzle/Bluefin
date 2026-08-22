@@ -15,6 +15,7 @@ struct NowPlayingView: View {
     @State private var showLyrics = false
     @State private var showPlaylistPicker = false
     @State private var showDetails = false
+    @State private var showRemoveDownloadConfirmation = false
     @State private var hasLyrics = false
     @Environment(\.dismiss) private var dismiss
 
@@ -78,6 +79,7 @@ struct NowPlayingView: View {
                 SongDetailsView(song: item)
             }
         }
+        .confirmRemoveDownload(songs: [player.currentItem].compactMap { $0 }, isPresented: $showRemoveDownloadConfirmation)
         .task(id: player.currentItem?.Id) {
             await checkLyricsAvailability()
         }
@@ -180,7 +182,10 @@ struct NowPlayingView: View {
                 }
 
                 Menu {
-                    SongPlaylistMenuItems(song: item, showPicker: $showPlaylistPicker, showDetails: $showDetails, showsGoToLinks: false)
+                    SongPlaylistMenuItems(
+                        song: item, showPicker: $showPlaylistPicker, showDetails: $showDetails,
+                        showRemoveDownloadConfirmation: $showRemoveDownloadConfirmation, showsGoToLinks: false
+                    )
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.title3)

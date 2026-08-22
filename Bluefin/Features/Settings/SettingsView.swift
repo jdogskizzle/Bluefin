@@ -15,6 +15,7 @@ struct SettingsView: View {
     @ObservedObject private var eqSettings = EqualizerSettings.shared
     @ObservedObject private var lidarrClient = LidarrAPIClient.shared
     @State private var showSync = false
+    @State private var showClearDownloadsConfirmation = false
 
     var body: some View {
         Form {
@@ -134,7 +135,7 @@ struct SettingsView: View {
                 }
                 .disabled(viewModel.isClearingCache || viewModel.cacheSizeBytes == 0)
                 Button("Clear Downloads", role: .destructive) {
-                    Task { await viewModel.clearDownloads() }
+                    showClearDownloadsConfirmation = true
                 }
                 .disabled(viewModel.isClearingDownloads || viewModel.downloadsSizeBytes == 0)
             } header: {
@@ -196,6 +197,18 @@ struct SettingsView: View {
             await viewModel.refreshLibrarySize()
             await viewModel.refreshDownloadsSize()
             await viewModel.refreshLibraryCounts()
+        }
+        .confirmationDialog(
+            "Clear all downloads?",
+            isPresented: $showClearDownloadsConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Downloads", role: .destructive) {
+                Task { await viewModel.clearDownloads() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes every downloaded song from this device. This can't be undone.")
         }
         .sheet(isPresented: $showSync) {
             LibrarySyncView()

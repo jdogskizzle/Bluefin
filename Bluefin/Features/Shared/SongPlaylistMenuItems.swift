@@ -26,6 +26,7 @@ struct SongPlaylistMenuItems: View {
     let song: BaseItemDto
     @Binding var showPicker: Bool
     @Binding var showDetails: Bool
+    @Binding var showRemoveDownloadConfirmation: Bool
     var removableFrom: RemovableFromPlaylist? = nil
     var isAlbumContext: Bool = false
     var showsGoToLinks: Bool = true
@@ -96,7 +97,7 @@ struct SongPlaylistMenuItems: View {
             }
         case .downloaded:
             Button(role: .destructive) {
-                downloadManager.removeDownload(song)
+                showRemoveDownloadConfirmation = true
             } label: {
                 Label("Remove Download", systemImage: "trash")
             }
@@ -135,12 +136,17 @@ private struct SongActionsModifier: ViewModifier {
     var isAlbumContext: Bool = false
     @State private var showPicker = false
     @State private var showDetails = false
+    @State private var showRemoveDownloadConfirmation = false
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
 
     func body(content: Content) -> some View {
         content
             .contextMenu {
-                SongPlaylistMenuItems(song: song, showPicker: $showPicker, showDetails: $showDetails, removableFrom: removableFrom, isAlbumContext: isAlbumContext)
+                SongPlaylistMenuItems(
+                    song: song, showPicker: $showPicker, showDetails: $showDetails,
+                    showRemoveDownloadConfirmation: $showRemoveDownloadConfirmation,
+                    removableFrom: removableFrom, isAlbumContext: isAlbumContext
+                )
             }
             .swipeActions(edge: .leading) {
                 Button {
@@ -172,6 +178,7 @@ private struct SongActionsModifier: ViewModifier {
             .sheet(isPresented: $showDetails) {
                 SongDetailsView(song: song)
             }
+            .confirmRemoveDownload(songs: [song], isPresented: $showRemoveDownloadConfirmation)
     }
 }
 

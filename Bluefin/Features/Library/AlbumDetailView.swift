@@ -12,6 +12,7 @@ struct AlbumDetailView: View {
     let album: BaseItemDto
     @StateObject private var viewModel: LibraryListViewModel
     @State private var artist: BaseItemDto?
+    @State private var showRemoveDownloadConfirmation = false
 
     init(album: BaseItemDto) {
         self.album = album
@@ -62,12 +63,13 @@ struct AlbumDetailView: View {
                     } label: {
                         Label("Add to Queue", systemImage: "text.insert")
                     }
-                    ContainerDownloadButton(songs: viewModel.items)
+                    ContainerDownloadButton(songs: viewModel.items, showRemoveConfirmation: $showRemoveDownloadConfirmation)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
             }
         }
+        .confirmRemoveDownload(songs: viewModel.items, isPresented: $showRemoveDownloadConfirmation)
         .task {
             await viewModel.load()
         }
