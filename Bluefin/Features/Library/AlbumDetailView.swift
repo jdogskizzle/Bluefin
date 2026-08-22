@@ -54,6 +54,15 @@ struct AlbumDetailView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ContainerDownloadButton(songs: viewModel.items)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
         .task {
             await viewModel.load()
         }

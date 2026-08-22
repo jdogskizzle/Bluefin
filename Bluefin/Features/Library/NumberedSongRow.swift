@@ -14,6 +14,7 @@ struct NumberedSongRow: View {
     var showsArtwork: Bool = false
     var isInSubqueue: Bool = false
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var downloadManager = DownloadManager.shared
 
     private var isNowPlaying: Bool {
         player.currentItem?.Id == song.Id
@@ -50,6 +51,8 @@ struct NumberedSongRow: View {
                     .foregroundStyle(Color.accentColor)
             }
 
+            downloadIcon
+
             if let duration = song.formattedDuration {
                 Text(duration)
                     .font(.footnote)
@@ -57,6 +60,21 @@ struct NumberedSongRow: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var downloadIcon: some View {
+        switch downloadManager.state(for: song.Id) {
+        case .notDownloaded:
+            EmptyView()
+        case .downloading:
+            ProgressView()
+                .controlSize(.mini)
+        case .downloaded:
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder

@@ -79,6 +79,18 @@ struct SettingsView: View {
                     Text(viewModel.formattedLibrarySize)
                         .foregroundStyle(.secondary)
                 }
+                HStack {
+                    Text("Downloaded Songs")
+                    Spacer()
+                    Text("\(viewModel.downloadedSongCount)")
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Text("Downloads Size")
+                    Spacer()
+                    Text(viewModel.formattedDownloadsSize)
+                        .foregroundStyle(.secondary)
+                }
                 Picker("Cache Limit", selection: $viewModel.cacheLimitBytes) {
                     Text("1 GB").tag(Int64(1_000_000_000))
                     Text("2 GB").tag(Int64(2_000_000_000))
@@ -95,10 +107,14 @@ struct SettingsView: View {
                     Task { await viewModel.clearCache() }
                 }
                 .disabled(viewModel.isClearingCache || viewModel.cacheSizeBytes == 0)
+                Button("Clear Downloads", role: .destructive) {
+                    Task { await viewModel.clearDownloads() }
+                }
+                .disabled(viewModel.isClearingDownloads || viewModel.downloadsSizeBytes == 0)
             } header: {
                 Text("Storage")
             } footer: {
-                Text("Clearing the audio cache only removes cached audio.")
+                Text("Clearing the audio cache only removes opportunistically cached audio, not songs you've explicitly downloaded.")
             }
 
             Section("Playback") {
@@ -147,6 +163,7 @@ struct SettingsView: View {
             await viewModel.loadLibraries()
             await viewModel.refreshCacheSize()
             await viewModel.refreshLibrarySize()
+            await viewModel.refreshDownloadsSize()
         }
         .sheet(isPresented: $showSync) {
             LibrarySyncView()

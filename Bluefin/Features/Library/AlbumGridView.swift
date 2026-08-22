@@ -20,6 +20,7 @@ struct AlbumGridView: View {
     @StateObject private var viewModel: LibraryListViewModel
     @ObservedObject private var sortPreference = AlbumSortPreference.shared
     @ObservedObject private var releaseCache = LidarrReleaseCache.shared
+    @State private var artistSongs: [BaseItemDto] = []
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
@@ -105,24 +106,36 @@ struct AlbumGridView: View {
         .toolbar {
             if isArtistPage {
                 ToolbarItem(placement: .topBarTrailing) {
-                    sortMenu
+                    artistMenu
                 }
             }
         }
         .task {
             await viewModel.load()
         }
+        .task {
+            await loadArtistSongs()
+        }
     }
 
-    private var sortMenu: some View {
+    private var artistMenu: some View {
         Menu {
             Picker("Sort", selection: $sortPreference.sortOrder) {
                 Text("Release Date (Oldest First)").tag(AlbumSortOrder.releaseDateAscending)
                 Text("Release Date (Newest First)").tag(AlbumSortOrder.releaseDateDescending)
             }
+            ContainerDownloadButton(songs: artistSongs)
         } label: {
-            Image(systemName: "arrow.up.arrow.down.circle")
+            Image(systemName: "ellipsis.circle")
         }
+    }
+
+    private func loadArtistSongs() async {
+        guard isArtistPage, let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
+              let songs = await LibraryCache.shared.items(for: "songs:\(libraryId)") else {
+            return
+        }
+        artistSongs = songs.filter { $0.AlbumArtist == title }
     }
 
     @ViewBuilder

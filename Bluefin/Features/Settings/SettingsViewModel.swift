@@ -17,6 +17,9 @@ final class SettingsViewModel: ObservableObject {
     @Published var cacheSizeBytes: Int64 = 0
     @Published var librarySizeBytes: Int64 = 0
     @Published var isClearingCache = false
+    @Published var downloadsSizeBytes: Int64 = 0
+    @Published var downloadedSongCount: Int = 0
+    @Published var isClearingDownloads = false
     @Published var cacheLimitBytes: Int64 = CacheManager.cacheLimitBytes {
         didSet {
             guard cacheLimitBytes != oldValue else { return }
@@ -36,6 +39,10 @@ final class SettingsViewModel: ObservableObject {
 
     var formattedLibrarySize: String {
         ByteCountFormatter.string(fromByteCount: librarySizeBytes, countStyle: .file)
+    }
+
+    var formattedDownloadsSize: String {
+        ByteCountFormatter.string(fromByteCount: downloadsSizeBytes, countStyle: .file)
     }
 
     private let apiClient: JellyfinAPIClient
@@ -62,6 +69,19 @@ final class SettingsViewModel: ObservableObject {
         await CacheManager.shared.clearCache()
         await refreshCacheSize()
         isClearingCache = false
+    }
+
+    func refreshDownloadsSize() async {
+        downloadsSizeBytes = await DownloadStore.shared.totalSizeBytes()
+        downloadedSongCount = await DownloadStore.shared.count()
+    }
+
+    func clearDownloads() async {
+        isClearingDownloads = true
+        await DownloadStore.shared.clearAll()
+        await DownloadManager.shared.refreshDownloadedIds()
+        await refreshDownloadsSize()
+        isClearingDownloads = false
     }
 
     private static let librariesCacheKey = "musicLibraries"

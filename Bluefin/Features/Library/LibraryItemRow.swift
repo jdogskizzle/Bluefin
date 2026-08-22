@@ -12,6 +12,7 @@ struct LibraryItemRow: View {
     let item: BaseItemDto
     var isPinned: Bool = false
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var downloadManager = DownloadManager.shared
 
     private var isNowPlaying: Bool {
         item.ItemType == "Audio" && player.currentItem?.Id == item.Id
@@ -32,16 +33,52 @@ struct LibraryItemRow: View {
                         .lineLimit(1)
                 }
             }
-            if isPinned {
+            if hasTrailingContent {
                 Spacer()
-                Image(systemName: "pin.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                trailingContent
             }
         }
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    private var hasTrailingContent: Bool {
+        isPinned || item.ItemType == "Audio"
+    }
+
+    @ViewBuilder
+    private var trailingContent: some View {
+        HStack(spacing: 6) {
+            if item.ItemType == "Audio" {
+                downloadIcon
+                if let duration = item.formattedDuration {
+                    Text(duration)
+                        .font(.footnote)
+                        .foregroundStyle(isNowPlaying ? Color.accentColor : Color.secondary)
+                }
+            }
+            if isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var downloadIcon: some View {
+        switch downloadManager.state(for: item.Id) {
+        case .notDownloaded:
+            EmptyView()
+        case .downloading:
+            ProgressView()
+                .controlSize(.mini)
+        case .downloaded:
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
@@ -85,7 +122,7 @@ struct LibraryItemRow: View {
             let parts = [item.AlbumArtist, item.ProductionYear.map(String.init)].compactMap { $0 }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         case "Audio":
-            return item.formattedDuration
+            return nil
         case "Playlist":
             return "\(item.ChildCount ?? 0) songs"
         default:

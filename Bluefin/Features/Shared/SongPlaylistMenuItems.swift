@@ -30,6 +30,7 @@ struct SongPlaylistMenuItems: View {
     var isAlbumContext: Bool = false
     var showsGoToLinks: Bool = true
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
+    @ObservedObject private var downloadManager = DownloadManager.shared
 
     var body: some View {
         if let pinnedId = pinnedStore.pinnedPlaylistId, let pinnedName = pinnedStore.pinnedPlaylistName {
@@ -49,6 +50,7 @@ struct SongPlaylistMenuItems: View {
         } label: {
             Label("Add to Queue", systemImage: "text.insert")
         }
+        downloadButton
         if showsGoToLinks {
             Button {
                 Task { await goToArtist() }
@@ -74,6 +76,30 @@ struct SongPlaylistMenuItems: View {
             showDetails = true
         } label: {
             Label("Details", systemImage: "info.circle")
+        }
+    }
+
+    @ViewBuilder
+    private var downloadButton: some View {
+        switch downloadManager.state(for: song.Id) {
+        case .notDownloaded:
+            Button {
+                downloadManager.download(song)
+            } label: {
+                Label("Download", systemImage: "arrow.down.circle")
+            }
+        case .downloading:
+            Button(role: .destructive) {
+                downloadManager.cancelDownload(song)
+            } label: {
+                Label("Cancel Download", systemImage: "xmark.circle")
+            }
+        case .downloaded:
+            Button(role: .destructive) {
+                downloadManager.removeDownload(song)
+            } label: {
+                Label("Remove Download", systemImage: "trash")
+            }
         }
     }
 

@@ -291,8 +291,12 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     }
 
     /// Local cached file if present, otherwise the remote stream URL — kicking off a background
-    /// download to cache it for next time.
+    /// download to cache it for next time. A real download (see `DownloadStore`) always wins over
+    /// the opportunistic cache when both exist — it's the copy the user explicitly asked to keep.
     private func playbackURL(for item: BaseItemDto) async -> URL? {
+        if let downloadedURL = await DownloadStore.shared.localFileURL(forItemId: item.Id) {
+            return downloadedURL
+        }
         if let localURL = await CacheManager.shared.localFileURL(forItemId: item.Id) {
             return localURL
         }

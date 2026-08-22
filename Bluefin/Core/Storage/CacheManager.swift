@@ -110,50 +110,29 @@ actor CacheManager {
         activeDownloads.insert(id)
         defer { activeDownloads.remove(id) }
 
-        do {
-            let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode)
-            else {
-                try? FileManager.default.removeItem(at: tempURL)
-                return
-            }
+        guard let (path, size) = await downloadFile(id: id, from: remoteURL) else { return }
 
-            // Unlike a network URL, a local file has no Content-Type for AVPlayer to sniff — it
-            // relies on the path extension to pick a demuxer, so we derive one from the response.
-            let ext = Self.fileExtension(
-                forMIMEType: http.value(forHTTPHeaderField: "Content-Type"))
-            let destinationURL = cacheDirectoryURL.appendingPathComponent("\(id).\(ext)")
-            try? FileManager.default.removeItem(at: destinationURL)
-            try FileManager.default.moveItem(at: tempURL, to: destinationURL)
-
-            let attributes = try? FileManager.default.attributesOfItem(atPath: destinationURL.path)
-            let fileSize = (attributes?[.size] as? Int64) ?? 0
-
-            if let track = fetchTrack(id: id) {
-                track.localFilePath = destinationURL.path
-                track.isDownloaded = true
-                track.fileSizeBytes = fileSize
-                track.lastAccessedDate = .now
-            } else {
-                let track = CachedTrack(
-                    id: id,
-                    title: title,
-                    artistName: artistName,
-                    albumName: albumName,
-                    albumId: albumId,
-                    durationTicks: durationTicks,
-                    localFilePath: destinationURL.path,
-                    isDownloaded: true,
-                    fileSizeBytes: fileSize
-                )
-                modelContext.insert(track)
-            }
-            try? modelContext.save()
-            evictIfOverLimit()
-        } catch {
-            // Streaming already served playback; a failed background cache attempt just means
-            // this track stays uncached until the next play.
+        if let track = fetchTrack(id: id) {
+            track.localFilePath = path
+            track.isDownloaded = true
+            track.fileSizeBytes = size
+            track.lastAccessedDate = .now
+        } else {
+            let track = CachedTrack(
+                id: id,
+                title: title,
+                artistName: artistName,
+                albumName: albumName,
+                albumId: albumId,
+                durationTicks: durationTicks,
+                localFilePath: path,
+                isDownloaded: true,
+                fileSizeBytes: size
+            )
+            modelContext.insert(track)
         }
+        try? modelContext.save()
+        evictIfOverLimit()
     }
 
     func totalCacheSizeBytes() -> Int64 {
@@ -178,6 +157,33 @@ actor CacheManager {
             evict(track)
         }
         try? modelContext.save()
+    }
+
+    private func downloadFile(id: String, from remoteURL: URL) async -> (path: String, size: Int64)? {
+        do {
+            let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode)
+            else {
+                try? FileManager.default.removeItem(at: tempURL)
+                return nil
+            }
+
+            // Unlike a network URL, a local file has no Content-Type for AVPlayer to sniff — it
+            // relies on the path extension to pick a demuxer, so we derive one from the response.
+            let ext = Self.fileExtension(
+                forMIMEType: http.value(forHTTPHeaderField: "Content-Type"))
+            let destinationURL = cacheDirectoryURL.appendingPathComponent("\(id).\(ext)")
+            try? FileManager.default.removeItem(at: destinationURL)
+            try FileManager.default.moveItem(at: tempURL, to: destinationURL)
+
+            let attributes = try? FileManager.default.attributesOfItem(atPath: destinationURL.path)
+            let fileSize = (attributes?[.size] as? Int64) ?? 0
+            return (destinationURL.path, fileSize)
+        } catch {
+            // Streaming already served playback (or the caller cancelled) — a failed/cancelled
+            // download just means this track stays uncached until the next attempt.
+            return nil
+        }
     }
 
     private func evictIfOverLimit() {

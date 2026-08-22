@@ -19,6 +19,7 @@ enum Persistence {
             CachedTrack.self,
             ListeningListAlbum.self,
             CachedItemList.self,
+            DownloadedTrack.self,
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
