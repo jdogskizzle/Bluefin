@@ -367,6 +367,54 @@ class JellyfinAPIClient: ObservableObject {
         return response.Lyrics
     }
 
+    private func performPost(path: String, body: [String: Any]) async {
+        guard let serverURL else { return }
+        var request = URLRequest(url: serverURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        // Reporting is best-effort — a dropped report shouldn't interrupt playback, so failures
+        // (including a session that's expired) are silently swallowed rather than surfaced.
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    /// Tells Jellyfin a play session has begun, so its "Now Playing" panel and per-item resume
+    /// position start tracking this item.
+    func reportPlaybackStart(itemId: String, playSessionId: String, positionTicks: Int64) async {
+        await performPost(path: "Sessions/Playing", body: [
+            "ItemId": itemId,
+            "PlaySessionId": playSessionId,
+            "PositionTicks": positionTicks,
+            "IsPaused": false,
+            "CanSeek": true,
+            "PlayMethod": "DirectStream"
+        ])
+    }
+
+    /// Periodic/event-driven position update for an in-progress session (play/pause toggles, seeks,
+    /// and every `progressReportInterval` while actively playing).
+    func reportPlaybackProgress(itemId: String, playSessionId: String, positionTicks: Int64, isPaused: Bool) async {
+        await performPost(path: "Sessions/Playing/Progress", body: [
+            "ItemId": itemId,
+            "PlaySessionId": playSessionId,
+            "PositionTicks": positionTicks,
+            "IsPaused": isPaused,
+            "CanSeek": true,
+            "PlayMethod": "DirectStream"
+        ])
+    }
+
+    /// Ends a play session at its final position — this is what lets Jellyfin update play count,
+    /// last-played date, and (past its own completion threshold) mark the item played.
+    func reportPlaybackStopped(itemId: String, playSessionId: String, positionTicks: Int64) async {
+        await performPost(path: "Sessions/Playing/Stopped", body: [
+            "ItemId": itemId,
+            "PlaySessionId": playSessionId,
+            "PositionTicks": positionTicks
+        ])
+    }
+
     func imageURL(itemId: String, imageType: String = "Primary", maxWidth: Int = 400) -> URL? {
         guard let serverURL, let accessToken else { return nil }
         var components = URLComponents(url: serverURL.appendingPathComponent("Items/\(itemId)/Images/\(imageType)"), resolvingAgainstBaseURL: false)

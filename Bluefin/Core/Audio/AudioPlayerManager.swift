@@ -69,6 +69,13 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     private var endObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
 
+    /// The Jellyfin play session currently being reported, if any — `nil` until playback actually
+    /// starts for the loaded item (e.g. a paused, app-launch-restored track has none yet), and
+    /// cleared once a `Sessions/Playing/Stopped` report has been sent for it.
+    private var activeReportingSession: (itemId: String, sessionId: String)?
+    private var lastProgressReportTime: TimeInterval = 0
+    private let progressReportInterval: TimeInterval = 10
+
     private struct PersistedPlaybackState: Codable {
         let queue: [BaseItemDto]
         let currentIndex: Int
@@ -101,6 +108,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         ) { _ in
             Task { @MainActor [weak self] in
                 self?.persistPlaybackState()
+                self?.reportProgress(isPaused: !(self?.isPlaying ?? false))
             }
         }
         #endif
@@ -206,12 +214,15 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         isPlaying = false
         updateNowPlayingPlaybackState()
         persistPlaybackState()
+        reportProgress(isPaused: true)
     }
 
     func resume() {
         player.play()
         isPlaying = true
         updateNowPlayingPlaybackState()
+        startReportingSessionIfNeeded()
+        reportProgress(isPaused: false)
     }
 
     func skipToNext() {
@@ -240,10 +251,15 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         player.seek(to: CMTime(seconds: time, preferredTimescale: 1000), toleranceBefore: tolerance, toleranceAfter: tolerance)
         currentTime = time
         updateNowPlayingElapsedTime()
+        reportProgress(isPaused: !isPlaying)
     }
 
     private func loadCurrentItem(autoplay: Bool, resumeAt: TimeInterval? = nil) {
         guard let item = currentItem else { return }
+        // Whatever was previously loaded (if its session ever actually started) is done as of this
+        // switch — reported here, before `currentTime` is reset below, so the stop position reflects
+        // where that item was actually left rather than the new item's starting position.
+        stopReportingSession(finalPosition: currentTime)
         removeEndObserver()
         currentTime = resumeAt ?? 0
         updateNowPlayingInfo()
@@ -267,6 +283,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
             if autoplay {
                 self.player.play()
                 self.isPlaying = true
+                self.startReportingSessionIfNeeded()
             }
         }
 
@@ -333,8 +350,45 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             Task { @MainActor [weak self] in
-                self?.currentTime = time.seconds
+                guard let self else { return }
+                self.currentTime = time.seconds
+                if self.isPlaying, self.currentTime - self.lastProgressReportTime >= self.progressReportInterval {
+                    self.lastProgressReportTime = self.currentTime
+                    self.reportProgress(isPaused: false)
+                }
             }
+        }
+    }
+
+    private func ticks(from seconds: TimeInterval) -> Int64 {
+        Int64(seconds * 10_000_000)
+    }
+
+    private func startReportingSessionIfNeeded() {
+        guard let item = currentItem, activeReportingSession?.itemId != item.Id else { return }
+        let sessionId = UUID().uuidString
+        activeReportingSession = (item.Id, sessionId)
+        lastProgressReportTime = currentTime
+        let position = ticks(from: currentTime)
+        Task.detached(priority: .utility) {
+            await JellyfinAPIClient.shared.reportPlaybackStart(itemId: item.Id, playSessionId: sessionId, positionTicks: position)
+        }
+    }
+
+    private func reportProgress(isPaused: Bool) {
+        guard let session = activeReportingSession else { return }
+        let position = ticks(from: currentTime)
+        Task.detached(priority: .utility) {
+            await JellyfinAPIClient.shared.reportPlaybackProgress(itemId: session.itemId, playSessionId: session.sessionId, positionTicks: position, isPaused: isPaused)
+        }
+    }
+
+    private func stopReportingSession(finalPosition: TimeInterval) {
+        guard let session = activeReportingSession else { return }
+        activeReportingSession = nil
+        let position = ticks(from: finalPosition)
+        Task.detached(priority: .utility) {
+            await JellyfinAPIClient.shared.reportPlaybackStopped(itemId: session.itemId, playSessionId: session.sessionId, positionTicks: position)
         }
     }
 
