@@ -167,13 +167,26 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     /// if there already is one — building up a contiguous subqueue rather than scattering additions
     /// throughout the rest of the queue.
     func addToSubqueue(_ song: BaseItemDto) {
+        addToSubqueue([song])
+    }
+
+    /// Same as `addToSubqueue(_:BaseItemDto)`, but for a whole batch (e.g. "Add Album to Queue") —
+    /// inserted contiguously in order with a single queue mutation, rather than one insert (and one
+    /// persisted-state write) per song.
+    func addToSubqueue(_ songs: [BaseItemDto]) {
+        guard !songs.isEmpty else { return }
         guard !queue.isEmpty else {
-            play(queue: [song], startAt: 0)
+            play(queue: songs, startAt: 0)
             return
         }
         let insertIndex = min(currentIndex + 1 + subqueueCount, queue.count)
-        insertQueueItem(song, at: insertIndex)
-        subqueueCount += 1
+        var newQueue = queue
+        var newEntryIDs = queueEntryIDs
+        newQueue.insert(contentsOf: songs, at: insertIndex)
+        newEntryIDs.insert(contentsOf: songs.map { _ in UUID() }, at: insertIndex)
+        queue = newQueue
+        queueEntryIDs = newEntryIDs
+        subqueueCount += songs.count
     }
 
     /// Removes an upcoming (not currently-playing) queue entry.

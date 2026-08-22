@@ -57,6 +57,11 @@ struct AlbumDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button {
+                        AudioPlayerManager.shared.addToSubqueue(viewModel.items)
+                    } label: {
+                        Label("Add to Queue", systemImage: "text.insert")
+                    }
                     ContainerDownloadButton(songs: viewModel.items)
                 } label: {
                     Image(systemName: "ellipsis.circle")

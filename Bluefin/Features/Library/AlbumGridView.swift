@@ -91,6 +91,13 @@ struct AlbumGridView: View {
                                 AlbumGridCell(album: album, subtitle: subtitle)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    Task { await addToQueue(album) }
+                                } label: {
+                                    Label("Add to Queue", systemImage: "text.insert")
+                                }
+                            }
                         }
                     }
                     .padding()
@@ -128,6 +135,11 @@ struct AlbumGridView: View {
         } label: {
             Image(systemName: "ellipsis.circle")
         }
+    }
+
+    private func addToQueue(_ album: BaseItemDto) async {
+        guard let songs = await LibraryCache.shared.items(for: "albumSongs:\(album.Id)") else { return }
+        AudioPlayerManager.shared.addToSubqueue(songs)
     }
 
     private func loadArtistSongs() async {
