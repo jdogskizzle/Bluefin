@@ -142,4 +142,17 @@ extension BaseItemDto {
             Genres: Genres
         )
     }
+
+    /// A copy with a different `Name` — used to reflect a rename (e.g. of a playlist) locally right
+    /// away, without waiting for the next full library sync to refetch it from the server.
+    func withName(_ newName: String) -> BaseItemDto {
+        BaseItemDto(
+            Id: Id, Name: newName, ItemType: ItemType, CollectionType: CollectionType,
+            AlbumArtist: AlbumArtist, Artists: Artists, Album: Album, AlbumId: AlbumId,
+            ProductionYear: ProductionYear, RunTimeTicks: RunTimeTicks, IndexNumber: IndexNumber,
+            ChildCount: ChildCount, ImageTags: ImageTags, PlaylistItemId: PlaylistItemId,
+            PremiereDate: PremiereDate, DateCreated: DateCreated, MediaSources: MediaSources, UserData: UserData,
+            Genres: Genres
+        )
+    }
 }

@@ -357,11 +357,17 @@ class JellyfinAPIClient: ObservableObject {
     /// as part of a playlist, not the song's own `Id` — since Jellyfin allows the same song to
     /// appear in a playlist more than once and needs to know which occurrence to remove.
     func removeItemFromPlaylist(playlistId: String, entryId: String) async throws {
+        try await removeItemsFromPlaylist(playlistId: playlistId, entryIds: [entryId])
+    }
+
+    /// Same as `removeItemFromPlaylist`, batched into a single request — used by the playlist
+    /// editor's multi-select delete instead of one request per selected song.
+    func removeItemsFromPlaylist(playlistId: String, entryIds: [String]) async throws {
         guard let serverURL else { throw JellyfinError.invalidURL }
         guard var components = URLComponents(url: serverURL.appendingPathComponent("Playlists/\(playlistId)/Items"), resolvingAgainstBaseURL: false) else {
             throw JellyfinError.invalidURL
         }
-        components.queryItems = [URLQueryItem(name: "entryIds", value: entryId)]
+        components.queryItems = [URLQueryItem(name: "entryIds", value: entryIds.joined(separator: ","))]
         guard let url = components.url else { throw JellyfinError.invalidURL }
 
         var request = URLRequest(url: url)
@@ -379,6 +385,101 @@ class JellyfinAPIClient: ObservableObject {
         guard (200...299).contains(httpResponse.statusCode) else {
             throw JellyfinError.serverError(httpResponse.statusCode)
         }
+    }
+
+    /// Shared plumbing for the simple "fire a request, check the status code" playlist-management
+    /// calls below — an optional JSON `body` and `contentType` cover the ones that need a request
+    /// body (create/rename), everything else is headers-and-status-code only.
+    private func performRequest(_ url: URL, method: String, body: Data? = nil, contentType: String? = nil) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        request.timeoutInterval = 10
+        if let contentType {
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        }
+        request.httpBody = body
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw JellyfinError.invalidResponse }
+        if httpResponse.statusCode == 401 {
+            await MainActor.run { self.logout() }
+            throw JellyfinError.sessionExpired
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw JellyfinError.serverError(httpResponse.statusCode)
+        }
+    }
+
+    /// Creates an empty playlist and returns its new id.
+    func createPlaylist(name: String) async throws -> String {
+        guard let serverURL, let userId else { throw JellyfinError.invalidResponse }
+        let url = serverURL.appendingPathComponent("Playlists")
+        let body = try JSONSerialization.data(withJSONObject: [
+            "Name": name,
+            "Ids": [String](),
+            "UserId": userId,
+            "MediaType": "Audio"
+        ])
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        request.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw JellyfinError.invalidResponse }
+        if httpResponse.statusCode == 401 {
+            await MainActor.run { self.logout() }
+            throw JellyfinError.sessionExpired
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw JellyfinError.serverError(httpResponse.statusCode)
+        }
+
+        struct CreatePlaylistResponse: Codable { let Id: String }
+        return try JSONDecoder().decode(CreatePlaylistResponse.self, from: data).Id
+    }
+
+    /// Deletes any item the user owns/can delete — used here for whole playlists, which Jellyfin
+    /// stores as a regular library item.
+    func deleteItem(itemId: String) async throws {
+        guard let serverURL else { throw JellyfinError.invalidURL }
+        try await performRequest(serverURL.appendingPathComponent("Items/\(itemId)"), method: "DELETE")
+    }
+
+    func renamePlaylist(playlistId: String, name: String) async throws {
+        guard let serverURL else { throw JellyfinError.invalidURL }
+        let body = try JSONSerialization.data(withJSONObject: ["Name": name])
+        try await performRequest(
+            serverURL.appendingPathComponent("Playlists/\(playlistId)"),
+            method: "POST",
+            body: body,
+            contentType: "application/json"
+        )
+    }
+
+    /// Moves the playlist entry (see `removeItemFromPlaylist` re: `entryId`) to `toIndex` within
+    /// the playlist's order.
+    func movePlaylistItem(playlistId: String, entryId: String, toIndex: Int) async throws {
+        guard let serverURL else { throw JellyfinError.invalidURL }
+        try await performRequest(
+            serverURL.appendingPathComponent("Playlists/\(playlistId)/Items/\(entryId)/Move/\(toIndex)"),
+            method: "POST"
+        )
+    }
+
+    /// Uploads new cover art for any item — used here for a playlist's image. Jellyfin expects the
+    /// image bytes base64-encoded in the body, with `Content-Type` set to the image's real MIME type.
+    func uploadItemImage(itemId: String, imageData: Data, mimeType: String) async throws {
+        guard let serverURL else { throw JellyfinError.invalidURL }
+        try await performRequest(
+            serverURL.appendingPathComponent("Items/\(itemId)/Images/Primary"),
+            method: "POST",
+            body: imageData.base64EncodedData(),
+            contentType: mimeType
+        )
     }
 
     func markFavorite(itemId: String) async throws {

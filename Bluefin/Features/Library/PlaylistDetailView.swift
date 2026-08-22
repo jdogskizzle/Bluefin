@@ -6,7 +6,9 @@
 //
 
 import Combine
+import PhotosUI
 import SwiftUI
+import UIKit
 
 struct PlaylistDetailView: View {
     let playlist: BaseItemDto
@@ -16,10 +18,17 @@ struct PlaylistDetailView: View {
     /// song's own `ProductionYear` — that field is frequently unset on individual tracks even when
     /// the album itself has a reliable release date.
     @State private var albumReleaseDates: [String: Date] = [:]
+    @State private var displayName: String
+    @State private var showRenameAlert = false
+    @State private var renameText = ""
+    @State private var showPhotoPicker = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var imageVersion = UUID()
 
     init(playlist: BaseItemDto) {
         self.playlist = playlist
         _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: "playlistSongs:\(playlist.Id)"))
+        _displayName = State(initialValue: playlist.Name)
     }
 
     /// `playlistOrder` keeps whatever order the sync produced; every other mode reorders the songs
@@ -97,8 +106,9 @@ struct PlaylistDetailView: View {
                                 NumberedSongRow(song: song, position: index + 1, showsArtwork: true)
                             }
                             .buttonStyle(.plain)
-                            .songActions(for: song, removableFrom: RemovableFromPlaylist(playlistId: playlist.Id, playlistName: playlist.Name))
+                            .songActions(for: song, removableFrom: RemovableFromPlaylist(playlistId: playlist.Id, playlistName: displayName))
                         }
+                        .onMove(perform: moveHandler)
                     }
                 }
                 .listStyle(.plain)
@@ -116,6 +126,22 @@ struct PlaylistDetailView: View {
                         Text("Alphabetical").tag(PlaylistSortOrder.alphabetical)
                         Text("Release Date").tag(PlaylistSortOrder.releaseDate)
                     }
+                    Button {
+                        renameText = displayName
+                        showRenameAlert = true
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    Button {
+                        showPhotoPicker = true
+                    } label: {
+                        Label("Change Image", systemImage: "photo")
+                    }
+                    Button {
+                        AudioPlayerManager.shared.addToSubqueue(displayedItems)
+                    } label: {
+                        Label("Add to Queue", systemImage: "text.insert")
+                    }
                     ContainerDownloadButton(songs: viewModel.items)
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -128,6 +154,46 @@ struct PlaylistDetailView: View {
         .task {
             await loadAlbumReleaseDates()
         }
+        .alert("Rename Playlist", isPresented: $showRenameAlert) {
+            TextField("Name", text: $renameText)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                let newName = renameText
+                displayName = newName
+                PlaylistActionService.renamePlaylist(playlist, newName: newName)
+            }
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            Task { await applyNewImage(newItem) }
+        }
+    }
+
+    /// Reordering only makes sense (and is only offered) while viewing the playlist's real,
+    /// server-side order — dragging a row in a sorted view wouldn't map to a meaningful position.
+    private var moveHandler: ((IndexSet, Int) -> Void)? {
+        guard sortPreference.sortOrder(for: playlist.Id) == .playlistOrder else { return nil }
+        return moveSongs
+    }
+
+    private func moveSongs(from source: IndexSet, to destination: Int) {
+        guard let sourceIndex = source.first else { return }
+        let song = viewModel.items[sourceIndex]
+        viewModel.items.move(fromOffsets: source, toOffset: destination)
+        guard let newIndex = viewModel.items.firstIndex(where: { ($0.PlaylistItemId ?? $0.Id) == (song.PlaylistItemId ?? song.Id) }) else { return }
+        PlaylistActionService.moveSong(song, toIndex: newIndex, in: playlist.Id, newOrder: viewModel.items)
+    }
+
+    private func applyNewImage(_ item: PhotosPickerItem?) async {
+        guard let item,
+              let data = try? await item.loadTransferable(type: Data.self),
+              let uiImage = UIImage(data: data),
+              let jpegData = uiImage.jpegData(compressionQuality: 0.85) else { return }
+        selectedPhotoItem = nil
+        let succeeded = await PlaylistActionService.updatePlaylistImage(playlist, imageData: jpegData, mimeType: "image/jpeg")
+        if succeeded {
+            imageVersion = UUID()
+        }
     }
 
     private var header: some View {
@@ -139,13 +205,14 @@ struct PlaylistDetailView: View {
                     .fill(Color.secondary.opacity(0.15))
                     .overlay(Image(systemName: "music.note.list").font(.largeTitle).foregroundStyle(.secondary))
             }
+            .id(imageVersion)
             .aspectRatio(1, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 32)
 
             VStack(spacing: 2) {
-                Text(playlist.Name)
+                Text(displayName)
                     .font(.title2)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)

@@ -63,6 +63,14 @@ final class PinnedPlaylistStore: ObservableObject {
         }
     }
 
+    /// Keeps the cached display name in step immediately after renaming the pinned playlist,
+    /// without waiting for the next sync.
+    func renamePinned(to name: String) {
+        guard pinnedPlaylistId != nil else { return }
+        pinnedPlaylistName = name
+        UserDefaults.standard.set(name, forKey: Self.nameDefaultsKey)
+    }
+
     func unpin() {
         pinnedPlaylistId = nil
         pinnedPlaylistName = nil

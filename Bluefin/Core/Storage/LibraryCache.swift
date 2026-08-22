@@ -39,6 +39,16 @@ actor LibraryCache {
         }
     }
 
+    /// Discards a cached list entirely — used when the thing it represents no longer exists (e.g. a
+    /// deleted playlist's own `playlistSongs:<id>` entry), rather than leaving a stale, unreachable
+    /// row behind.
+    func remove(for key: String) {
+        let descriptor = FetchDescriptor<CachedItemList>(predicate: #Predicate { $0.key == key })
+        guard let entry = try? modelContext.fetch(descriptor).first else { return }
+        modelContext.delete(entry)
+        try? modelContext.save()
+    }
+
     func totalCacheSizeBytes() -> Int64 {
         let descriptor = FetchDescriptor<CachedItemList>()
         let entries = (try? modelContext.fetch(descriptor)) ?? []

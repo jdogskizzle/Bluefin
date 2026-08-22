@@ -13,6 +13,9 @@ struct LibraryListView: View {
     let itemType: LibraryItemKind
     @StateObject private var viewModel: LibraryListViewModel
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
+    @State private var showCreatePlaylistAlert = false
+    @State private var newPlaylistName = ""
+    @State private var playlistPendingDeletion: BaseItemDto?
 
     init(title: String, itemType: LibraryItemKind, cacheKey: String) {
         self.title = title
@@ -47,6 +50,45 @@ struct LibraryListView: View {
             }
         }
         .navigationTitle(title)
+        .toolbar {
+            if itemType == .playlist {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        newPlaylistName = ""
+                        showCreatePlaylistAlert = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+        }
+        .alert("New Playlist", isPresented: $showCreatePlaylistAlert) {
+            TextField("Name", text: $newPlaylistName)
+            Button("Cancel", role: .cancel) {}
+            Button("Create") {
+                Task { await PlaylistActionService.createPlaylist(name: newPlaylistName) }
+            }
+        }
+        .confirmationDialog(
+            "Delete \(playlistPendingDeletion?.Name ?? "Playlist")?",
+            isPresented: Binding(
+                get: { playlistPendingDeletion != nil },
+                set: { if !$0 { playlistPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Playlist", role: .destructive) {
+                if let playlist = playlistPendingDeletion {
+                    PlaylistActionService.deletePlaylist(playlist)
+                }
+                playlistPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                playlistPendingDeletion = nil
+            }
+        } message: {
+            Text("This can't be undone.")
+        }
         .task {
             await viewModel.load()
         }
@@ -61,17 +103,30 @@ struct LibraryListView: View {
 
         switch itemType {
         case .playlist:
-            row.contextMenu {
-                Button {
-                    pinnedStore.togglePin(id: item.Id, name: item.Name)
-                } label: {
-                    if pinnedStore.isPinned(item.Id) {
-                        Label("Unpin Playlist", systemImage: "pin.slash")
-                    } else {
-                        Label("Pin Playlist", systemImage: "pin")
+            row
+                .contextMenu {
+                    Button {
+                        pinnedStore.togglePin(id: item.Id, name: item.Name)
+                    } label: {
+                        if pinnedStore.isPinned(item.Id) {
+                            Label("Unpin Playlist", systemImage: "pin.slash")
+                        } else {
+                            Label("Pin Playlist", systemImage: "pin")
+                        }
+                    }
+                    Button(role: .destructive) {
+                        playlistPendingDeletion = item
+                    } label: {
+                        Label("Delete Playlist", systemImage: "trash")
                     }
                 }
-            }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        playlistPendingDeletion = item
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                }
         case .song:
             row.songActions(for: item)
         }

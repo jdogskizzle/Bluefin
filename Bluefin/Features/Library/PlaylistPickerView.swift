@@ -15,6 +15,8 @@ struct PlaylistPickerView: View {
     let song: BaseItemDto
     @Environment(\.dismiss) private var dismiss
     @State private var playlists: [BaseItemDto]?
+    @State private var showCreatePlaylistAlert = false
+    @State private var newPlaylistName = ""
 
     var body: some View {
         NavigationStack {
@@ -53,10 +55,31 @@ struct PlaylistPickerView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        newPlaylistName = ""
+                        showCreatePlaylistAlert = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+        }
+        .alert("New Playlist", isPresented: $showCreatePlaylistAlert) {
+            TextField("Name", text: $newPlaylistName)
+            Button("Cancel", role: .cancel) {}
+            Button("Create") {
+                Task { await createPlaylistAndAddSong() }
             }
         }
         .task {
             playlists = await LibraryCache.shared.items(for: "playlists")
         }
+    }
+
+    private func createPlaylistAndAddSong() async {
+        guard let created = await PlaylistActionService.createPlaylist(name: newPlaylistName) else { return }
+        dismiss()
+        PlaylistActionService.addSong(song, toPlaylistId: created.Id, playlistName: created.Name)
     }
 }
