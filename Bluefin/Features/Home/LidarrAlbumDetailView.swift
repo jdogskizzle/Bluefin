@@ -115,7 +115,8 @@ struct LidarrAlbumDetailView: View {
         HStack(spacing: 12) {
             Text(track.trackNumber ?? "")
                 .font(.subheadline)
-                .frame(width: 24, alignment: .trailing)
+                .lineLimit(1)
+                .frame(minWidth: 24, alignment: .trailing)
 
             Text(track.title)
                 .font(.body)

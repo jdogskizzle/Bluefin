@@ -29,10 +29,11 @@ struct NumberedSongRow: View {
                 } else {
                     Text("\(position)")
                         .font(.subheadline)
+                        .lineLimit(1)
                 }
             }
             .foregroundStyle(isNowPlaying ? Color.accentColor : Color.secondary)
-            .frame(width: 20, alignment: .leading)
+            .frame(minWidth: 20, alignment: .leading)
 
             if showsArtwork {
                 artwork
