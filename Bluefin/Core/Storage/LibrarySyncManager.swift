@@ -115,7 +115,8 @@ final class LibrarySyncManager: ObservableObject {
                     parentId: libraryId,
                     includeItemTypes: "MusicAlbum",
                     artistIds: artist.Id,
-                    sortBy: "PremiereDate"
+                    sortBy: "PremiereDate",
+                    fields: "PremiereDate"
                 ) else { return }
                 let filtered = artistAlbums.filter { ($0.Artists?.count ?? 0) <= Self.variousArtistsThreshold }
                 await LibraryCache.shared.store(filtered, for: "artistAlbums:\(artist.Id)")

@@ -18,8 +18,42 @@ struct AlbumGridView: View {
     let subtitle: AlbumGridSubtitle
     let bannerItemId: String?
     @StateObject private var viewModel: LibraryListViewModel
+    @ObservedObject private var sortPreference = AlbumSortPreference.shared
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
+
+    /// Only an artist's own albums page (identified by having a banner) sorts by release date —
+    /// the plain top-level Albums grid keeps whatever order the sync produced.
+    private var isArtistPage: Bool { bannerItemId != nil }
+
+    private var displayedItems: [BaseItemDto] {
+        guard isArtistPage else { return viewModel.items }
+        return viewModel.items.sorted { lhs, rhs in
+            let lhsDate = releaseDateKey(for: lhs)
+            let rhsDate = releaseDateKey(for: rhs)
+            guard lhsDate != rhsDate else {
+                // Same key (e.g. neither has any date info at all) — fall back to name so the
+                // order is at least deterministic rather than whatever the sync happened to store.
+                return lhs.Name < rhs.Name
+            }
+            return sortPreference.sortOrder == .releaseDateAscending ? lhsDate < rhsDate : lhsDate > rhsDate
+        }
+    }
+
+    /// The precise `premiereDate` when available; otherwise January 1st of `ProductionYear` as a
+    /// coarser fallback, so albums missing a precise date still land in roughly the right place
+    /// rather than being pushed to one end of the list. `ProductionYear` alone isn't precise enough
+    /// on its own — two albums released in the same year would otherwise tie and fall back to
+    /// whatever order the sync happened to store them in.
+    private func releaseDateKey(for album: BaseItemDto) -> Date {
+        if let premiereDate = album.premiereDate {
+            return premiereDate
+        }
+        if let year = album.ProductionYear {
+            return Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: 1, day: 1)) ?? .distantPast
+        }
+        return .distantPast
+    }
 
     init(title: String, subtitle: AlbumGridSubtitle, bannerItemId: String? = nil, cacheKey: String) {
         self.title = title
@@ -40,7 +74,7 @@ struct AlbumGridView: View {
                         banner(itemId: bannerItemId)
                     }
                     LazyVGrid(columns: columns, spacing: 24) {
-                        ForEach(viewModel.items) { album in
+                        ForEach(displayedItems) { album in
                             NavigationLink(value: LibraryRoute.albumSongs(album)) {
                                 AlbumGridCell(album: album, subtitle: subtitle)
                             }
@@ -57,8 +91,26 @@ struct AlbumGridView: View {
         .navigationTitle(bannerItemId != nil ? "" : title)
         .navigationBarTitleDisplayMode(bannerItemId != nil ? .inline : .automatic)
         .toolbarBackground(bannerItemId != nil ? .hidden : .automatic, for: .navigationBar)
+        .toolbar {
+            if isArtistPage {
+                ToolbarItem(placement: .topBarTrailing) {
+                    sortMenu
+                }
+            }
+        }
         .task {
             await viewModel.load()
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort", selection: $sortPreference.sortOrder) {
+                Text("Release Date (Oldest First)").tag(AlbumSortOrder.releaseDateAscending)
+                Text("Release Date (Newest First)").tag(AlbumSortOrder.releaseDateDescending)
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down.circle")
         }
     }
 

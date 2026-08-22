@@ -264,7 +264,8 @@ class JellyfinAPIClient: ObservableObject {
         artistIds: String? = nil,
         mediaTypes: String? = nil,
         searchTerm: String? = nil,
-        sortBy: String = "SortName"
+        sortBy: String = "SortName",
+        fields: String? = nil
     ) async throws -> [BaseItemDto] {
         guard let userId else { throw JellyfinError.invalidResponse }
         var queryItems = [
@@ -283,6 +284,12 @@ class JellyfinAPIClient: ObservableObject {
         }
         if let searchTerm, !searchTerm.isEmpty {
             queryItems.append(URLQueryItem(name: "SearchTerm", value: searchTerm))
+        }
+        if let fields {
+            // Jellyfin only includes a handful of fields by default — anything else (like
+            // `PremiereDate`, needed for precise release-date sorting) has to be asked for
+            // explicitly or it's simply absent from the response.
+            queryItems.append(URLQueryItem(name: "Fields", value: fields))
         }
 
         let response: ItemsResponse = try await performGet(path: "Users/\(userId)/Items", queryItems: queryItems)
