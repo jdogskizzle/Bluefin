@@ -34,13 +34,13 @@ enum LidarrError: Error, LocalizedError {
     }
 }
 
-struct LidarrImage: Codable {
+struct LidarrImage: Codable, Hashable {
     let coverType: String
     let url: String?
     let remoteUrl: String?
 }
 
-struct LidarrArtist: Codable {
+struct LidarrArtist: Codable, Hashable {
     let id: Int
     let artistName: String
     let images: [LidarrImage]?
@@ -48,7 +48,7 @@ struct LidarrArtist: Codable {
 
 /// A single entry from Lidarr's `/calendar` endpoint — an album release (past or upcoming) for a
 /// monitored artist in the user's Lidarr library.
-struct LidarrCalendarItem: Codable, Identifiable {
+struct LidarrCalendarItem: Codable, Identifiable, Hashable {
     let id: Int
     let title: String
     let releaseDate: Date?
@@ -222,5 +222,31 @@ final class LidarrAPIClient: ObservableObject {
         return items
             .filter { $0.monitored && ($0.releaseDate.map { $0 >= start } ?? false) }
             .sorted { ($0.releaseDate ?? .distantFuture) < ($1.releaseDate ?? .distantFuture) }
+    }
+
+    /// The track listing Lidarr already knows about for an album that hasn't been downloaded yet —
+    /// shown greyed out in `LidarrAlbumDetailView` since there's no audio to actually play.
+    func fetchTracks(albumId: Int) async throws -> [LidarrTrack] {
+        let tracks: [LidarrTrack] = try await performGet(
+            path: "api/v1/track",
+            queryItems: [URLQueryItem(name: "albumId", value: String(albumId))]
+        )
+        return tracks.sorted { ($0.absoluteTrackNumber ?? 0) < ($1.absoluteTrackNumber ?? 0) }
+    }
+}
+
+struct LidarrTrack: Codable, Identifiable, Hashable {
+    let id: Int
+    let title: String
+    let trackNumber: String?
+    let absoluteTrackNumber: Int?
+    let duration: Int?
+
+    var formattedDuration: String? {
+        guard let duration, duration > 0 else { return nil }
+        let totalSeconds = duration / 1000
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }

@@ -42,6 +42,9 @@ struct HomeView: View {
             .navigationDestination(for: LibraryRoute.self) { route in
                 LibraryDestinationView(route: route)
             }
+            .navigationDestination(for: LidarrCalendarItem.self) { release in
+                LidarrAlbumDetailView(release: release)
+            }
         }
         .task(id: pinnedStore.pinnedPlaylistId) {
             await loadPinnedPlaylist()
@@ -133,35 +136,38 @@ struct HomeView: View {
     }
 
     private func upcomingReleaseCard(_ release: LidarrCalendarItem) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            AsyncImage(url: release.coverImageURL(serverURL: lidarrClient.serverURL, apiKey: lidarrClient.apiKey)) { phase in
-                if let image = phase.image {
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.15))
-                        .overlay(Image(systemName: "opticaldisc").foregroundStyle(.secondary))
+        NavigationLink(value: release) {
+            VStack(alignment: .leading, spacing: 4) {
+                AsyncImage(url: release.coverImageURL(serverURL: lidarrClient.serverURL, apiKey: lidarrClient.apiKey)) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.secondary.opacity(0.15))
+                            .overlay(Image(systemName: "opticaldisc").foregroundStyle(.secondary))
+                    }
                 }
-            }
-            .frame(width: 120, height: 120)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(width: 120, height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            Text(release.title)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            Text(release.artistName)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if let releaseDate = release.releaseDate {
-                Text(releaseDate.formatted(.dateTime.month(.abbreviated).day()))
+                Text(release.title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(release.artistName)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let releaseDate = release.releaseDate {
+                    Text(releaseDate.formatted(.dateTime.month(.abbreviated).day()))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .frame(width: 120)
         }
-        .frame(width: 120)
+        .buttonStyle(.plain)
     }
 }
 
