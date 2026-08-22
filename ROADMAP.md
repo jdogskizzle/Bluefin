@@ -53,3 +53,4 @@ Status as of 2026-08-20, verified against the current codebase (not just prior p
 ## Later
 - [ ] WebSocket sync for real-time playback reporting (progress/play count back to Jellyfin) — API client currently has no WebSocket usage
 - [ ] "Listen List" persistence (needs SwiftData model above)
+- [ ] Lidarr integration: Login to lidarr server, show upcoming/previous releases with dates, tracks, etc.s
