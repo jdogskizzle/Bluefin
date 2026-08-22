@@ -11,10 +11,68 @@ import SwiftUI
 struct PlaylistDetailView: View {
     let playlist: BaseItemDto
     @StateObject private var viewModel: LibraryListViewModel
+    @ObservedObject private var sortPreference = PlaylistSortPreference.shared
+    /// Album id → release date, resolved from the synced album list rather than trusting each
+    /// song's own `ProductionYear` — that field is frequently unset on individual tracks even when
+    /// the album itself has a reliable release date.
+    @State private var albumReleaseDates: [String: Date] = [:]
 
     init(playlist: BaseItemDto) {
         self.playlist = playlist
         _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: "playlistSongs:\(playlist.Id)"))
+    }
+
+    /// `playlistOrder` keeps whatever order the sync produced; every other mode reorders the songs
+    /// as displayed (and as `ForEach`, `PlayShuffleBar`, and "Add to Queue" all use) without
+    /// touching the actual playlist on the server.
+    private var sortOrderBinding: Binding<PlaylistSortOrder> {
+        Binding(
+            get: { sortPreference.sortOrder(for: playlist.Id) },
+            set: { sortPreference.setSortOrder($0, for: playlist.Id) }
+        )
+    }
+
+    private var displayedItems: [BaseItemDto] {
+        switch sortPreference.sortOrder(for: playlist.Id) {
+        case .playlistOrder:
+            return viewModel.items
+        case .artist:
+            return viewModel.items.sorted { lhs, rhs in
+                let lhsArtist = lhs.AlbumArtist ?? lhs.Artists?.first ?? ""
+                let rhsArtist = rhs.AlbumArtist ?? rhs.Artists?.first ?? ""
+                let artistComparison = lhsArtist.localizedCaseInsensitiveCompare(rhsArtist)
+                if artistComparison != .orderedSame { return artistComparison == .orderedAscending }
+                let lhsDate = releaseDate(for: lhs)
+                let rhsDate = releaseDate(for: rhs)
+                if lhsDate != rhsDate { return lhsDate < rhsDate }
+                let lhsAlbum = lhs.Album ?? ""
+                let rhsAlbum = rhs.Album ?? ""
+                let albumComparison = lhsAlbum.localizedCaseInsensitiveCompare(rhsAlbum)
+                if albumComparison != .orderedSame { return albumComparison == .orderedAscending }
+                return (lhs.IndexNumber ?? 0) < (rhs.IndexNumber ?? 0)
+            }
+        case .alphabetical:
+            return viewModel.items.sorted { $0.Name.localizedCaseInsensitiveCompare($1.Name) == .orderedAscending }
+        case .releaseDate:
+            return viewModel.items.sorted { releaseDate(for: $0) < releaseDate(for: $1) }
+        }
+    }
+
+    private func releaseDate(for song: BaseItemDto) -> Date {
+        albumReleaseDates[song.AlbumId ?? ""] ?? .distantPast
+    }
+
+    private func loadAlbumReleaseDates() async {
+        guard let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
+              let albums = await LibraryCache.shared.items(for: "albums:\(libraryId)") else {
+            return
+        }
+        albumReleaseDates = Dictionary(uniqueKeysWithValues: albums.map { album in
+            let date = album.premiereDate ?? album.ProductionYear.flatMap {
+                Calendar(identifier: .gregorian).date(from: DateComponents(year: $0, month: 1, day: 1))
+            } ?? .distantPast
+            return (album.Id, date)
+        })
     }
 
     var body: some View {
@@ -32,9 +90,9 @@ struct PlaylistDetailView: View {
                     }
 
                     Section {
-                        ForEach(Array(viewModel.items.enumerated()), id: \.element.id) { index, song in
+                        ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, song in
                             Button {
-                                AudioPlayerManager.shared.play(queue: viewModel.items, startAt: index)
+                                AudioPlayerManager.shared.play(queue: displayedItems, startAt: index)
                             } label: {
                                 NumberedSongRow(song: song, position: index + 1, showsArtwork: true)
                             }
@@ -52,6 +110,12 @@ struct PlaylistDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Picker("Sort", selection: sortOrderBinding) {
+                        Text("Playlist Order").tag(PlaylistSortOrder.playlistOrder)
+                        Text("Artist").tag(PlaylistSortOrder.artist)
+                        Text("Alphabetical").tag(PlaylistSortOrder.alphabetical)
+                        Text("Release Date").tag(PlaylistSortOrder.releaseDate)
+                    }
                     ContainerDownloadButton(songs: viewModel.items)
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -60,6 +124,9 @@ struct PlaylistDetailView: View {
         }
         .task {
             await viewModel.load()
+        }
+        .task {
+            await loadAlbumReleaseDates()
         }
     }
 
@@ -88,7 +155,7 @@ struct PlaylistDetailView: View {
             }
             .padding(.horizontal)
 
-            PlayShuffleBar(songs: viewModel.items)
+            PlayShuffleBar(songs: displayedItems)
                 .padding(.horizontal, 32)
                 .padding(.top, 8)
         }

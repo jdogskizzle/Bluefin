@@ -88,7 +88,11 @@ final class LibrarySyncManager: ObservableObject {
             await LibraryCache.shared.store(artists, for: "artists:\(libraryId)")
 
             phase = .syncing(step: .albums, completed: 0, total: 1)
-            let albums = try await JellyfinAPIClient.shared.fetchItems(parentId: libraryId, includeItemTypes: "MusicAlbum")
+            let albums = try await JellyfinAPIClient.shared.fetchItems(
+                parentId: libraryId,
+                includeItemTypes: "MusicAlbum",
+                fields: "PremiereDate"
+            )
             await LibraryCache.shared.store(albums, for: "albums:\(libraryId)")
 
             phase = .syncing(step: .songs, completed: 0, total: 1)
