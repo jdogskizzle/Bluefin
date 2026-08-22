@@ -15,14 +15,19 @@ struct RemovableFromPlaylist {
     let playlistName: String
 }
 
-/// The playlist actions for a song, shared between the long-press context menu on song rows, their
-/// swipe actions, and the large player's "..." menu — so they stay in sync by construction rather
-/// than by keeping copies in step. `removableFrom` is only passed by call sites that know the song
-/// is being viewed within that playlist.
+/// The actions for a song, shared between the long-press context menu on song rows, their swipe
+/// actions, and the large player's "..." menu — so they stay in sync by construction rather than
+/// by keeping copies in step. `removableFrom` is only passed by call sites that know the song is
+/// being viewed within that playlist; `isAlbumContext` by call sites showing it as part of its own
+/// album (`AlbumDetailView`), where "Go to Album" would just point at the screen already showing.
+/// `showsGoToLinks` is `false` only for `NowPlayingView`, which already has its own "Go to Artist"/
+/// "Go to Album" elsewhere on that screen — showing them here too would just be a duplicate.
 struct SongPlaylistMenuItems: View {
     let song: BaseItemDto
     @Binding var showPicker: Bool
     var removableFrom: RemovableFromPlaylist? = nil
+    var isAlbumContext: Bool = false
+    var showsGoToLinks: Bool = true
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
 
     var body: some View {
@@ -43,6 +48,20 @@ struct SongPlaylistMenuItems: View {
         } label: {
             Label("Add to Queue", systemImage: "text.insert")
         }
+        if showsGoToLinks {
+            Button {
+                Task { await goToArtist() }
+            } label: {
+                Label("Go to Artist", systemImage: "music.mic")
+            }
+            if !isAlbumContext {
+                Button {
+                    Task { await goToAlbum() }
+                } label: {
+                    Label("Go to Album", systemImage: "square.stack")
+                }
+            }
+        }
         if let removableFrom {
             Button(role: .destructive) {
                 PlaylistActionService.removeSong(song, fromPlaylistId: removableFrom.playlistId, playlistName: removableFrom.playlistName)
@@ -51,21 +70,44 @@ struct SongPlaylistMenuItems: View {
             }
         }
     }
+
+    private func goToArtist() async {
+        guard let artistName = song.AlbumArtist ?? song.Artists?.first,
+              let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
+              let artists = await LibraryCache.shared.items(for: "artists:\(libraryId)"),
+              let artist = artists.first(where: { $0.Name == artistName }) else {
+            ToastCenter.shared.show("Couldn't find that artist", isError: true)
+            return
+        }
+        AppNavigator.shared.navigate(to: .artistAlbums(artist))
+    }
+
+    private func goToAlbum() async {
+        guard let albumId = song.AlbumId,
+              let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
+              let albums = await LibraryCache.shared.items(for: "albums:\(libraryId)"),
+              let album = albums.first(where: { $0.Id == albumId }) else {
+            ToastCenter.shared.show("Couldn't find that album", isError: true)
+            return
+        }
+        AppNavigator.shared.navigate(to: .albumSongs(album))
+    }
 }
 
 /// Long-press context menu + swipe actions for a song row inside a `List`: leading (left-to-right)
 /// swipe offers "Add to Queue"; trailing (right-to-left) offers the playlist "add" actions.
-/// "Remove from Playlist" is context-menu only, not a swipe action.
+/// "Remove from Playlist" and "Go to Artist"/"Go to Album" are context-menu only, not swipe actions.
 private struct SongActionsModifier: ViewModifier {
     let song: BaseItemDto
     var removableFrom: RemovableFromPlaylist? = nil
+    var isAlbumContext: Bool = false
     @State private var showPicker = false
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
 
     func body(content: Content) -> some View {
         content
             .contextMenu {
-                SongPlaylistMenuItems(song: song, showPicker: $showPicker, removableFrom: removableFrom)
+                SongPlaylistMenuItems(song: song, showPicker: $showPicker, removableFrom: removableFrom, isAlbumContext: isAlbumContext)
             }
             .swipeActions(edge: .leading) {
                 Button {
@@ -98,10 +140,11 @@ private struct SongActionsModifier: ViewModifier {
 }
 
 extension View {
-    /// Long-press context menu + swipe actions for adding `song` to the play queue or a playlist.
-    /// Pass `removableFrom` when `song` is being shown as part of that specific playlist, to also
-    /// offer "Remove from Playlist" in the context menu.
-    func songActions(for song: BaseItemDto, removableFrom: RemovableFromPlaylist? = nil) -> some View {
-        modifier(SongActionsModifier(song: song, removableFrom: removableFrom))
+    /// Long-press context menu + swipe actions for a song. Pass `removableFrom` when `song` is
+    /// being shown as part of that specific playlist, to also offer "Remove from Playlist" in the
+    /// context menu; pass `isAlbumContext: true` when it's being shown as part of its own album
+    /// (`AlbumDetailView`), to omit the otherwise-redundant "Go to Album".
+    func songActions(for song: BaseItemDto, removableFrom: RemovableFromPlaylist? = nil, isAlbumContext: Bool = false) -> some View {
+        modifier(SongActionsModifier(song: song, removableFrom: removableFrom, isAlbumContext: isAlbumContext))
     }
 }

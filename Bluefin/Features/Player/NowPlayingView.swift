@@ -172,7 +172,7 @@ struct NowPlayingView: View {
                 }
 
                 Menu {
-                    SongPlaylistMenuItems(song: item, showPicker: $showPlaylistPicker)
+                    SongPlaylistMenuItems(song: item, showPicker: $showPlaylistPicker, showsGoToLinks: false)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.title3)
