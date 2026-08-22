@@ -14,9 +14,11 @@ import SwiftUI
 struct LidarrAlbumDetailView: View {
     let release: LidarrCalendarItem
     @ObservedObject private var client = LidarrAPIClient.shared
-    @State private var tracks: [LidarrTrack] = []
-    @State private var isLoading = true
+    @ObservedObject private var releaseCache = LidarrReleaseCache.shared
     @State private var artist: BaseItemDto?
+
+    private var tracks: [LidarrTrack] { releaseCache.tracks(forAlbumId: release.id) ?? [] }
+    private var isLoading: Bool { releaseCache.tracks(forAlbumId: release.id) == nil }
 
     var body: some View {
         List {
@@ -46,9 +48,6 @@ struct LidarrAlbumDetailView: View {
         .avoidsMiniPlayer()
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await loadTracks()
-        }
         .task {
             await resolveArtist()
         }
@@ -131,11 +130,5 @@ struct LidarrAlbumDetailView: View {
         }
         .foregroundStyle(.secondary)
         .opacity(0.5)
-    }
-
-    private func loadTracks() async {
-        isLoading = true
-        tracks = (try? await client.fetchTracks(albumId: release.id)) ?? []
-        isLoading = false
     }
 }

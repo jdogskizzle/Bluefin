@@ -12,15 +12,15 @@ struct HomeView: View {
     @ObservedObject private var pinnedStore = PinnedPlaylistStore.shared
     @ObservedObject private var navigator = AppNavigator.shared
     @ObservedObject private var lidarrClient = LidarrAPIClient.shared
+    @ObservedObject private var releaseCache = LidarrReleaseCache.shared
     @State private var pinnedPlaylist: BaseItemDto?
     @State private var pinnedPlaylistSongs: [BaseItemDto] = []
-    @State private var upcomingReleases: [LidarrCalendarItem] = []
 
     var body: some View {
         NavigationStack(path: $navigator.homePath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if !upcomingReleases.isEmpty {
+                    if !releaseCache.upcomingReleases.isEmpty {
                         upcomingReleasesSection
                     }
 
@@ -50,20 +50,12 @@ struct HomeView: View {
             await loadPinnedPlaylist()
         }
         .task(id: lidarrClient.isConnected) {
-            await loadUpcomingReleases()
+            await releaseCache.refresh()
         }
         .onReceive(LibraryCacheChangeCenter.didChange) { key in
             guard let id = pinnedStore.pinnedPlaylistId, key == "playlists" || key == "playlistSongs:\(id)" else { return }
             Task { await loadPinnedPlaylist() }
         }
-    }
-
-    private func loadUpcomingReleases() async {
-        guard lidarrClient.isConnected else {
-            upcomingReleases = []
-            return
-        }
-        upcomingReleases = (try? await lidarrClient.fetchUpcomingReleases()) ?? []
     }
 
     private func loadPinnedPlaylist() async {
@@ -127,7 +119,7 @@ struct HomeView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
-                    ForEach(upcomingReleases) { release in
+                    ForEach(releaseCache.upcomingReleases) { release in
                         upcomingReleaseCard(release)
                     }
                 }
