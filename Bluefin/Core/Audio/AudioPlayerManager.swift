@@ -253,7 +253,10 @@ final class AudioPlayerManager: NSObject, ObservableObject {
             // The user may have skipped again while this awaited — don't clobber newer state.
             guard item.Id == self.currentItem?.Id else { return }
 
-            let playerItem = AVPlayerItem(url: url)
+            let asset = AVURLAsset(url: url)
+            let playerItem = AVPlayerItem(asset: asset)
+            playerItem.audioMix = await EqualizerAudioMixFactory.makeAudioMix(for: asset)
+            guard item.Id == self.currentItem?.Id else { return }
             self.player.replaceCurrentItem(with: playerItem)
             self.addEndObserver(for: playerItem)
 

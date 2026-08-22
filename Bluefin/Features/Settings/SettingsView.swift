@@ -12,6 +12,7 @@ struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel(apiClient: .shared)
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
     @ObservedObject private var syncManager = LibrarySyncManager.shared
+    @ObservedObject private var eqSettings = EqualizerSettings.shared
     @State private var showSync = false
 
     var body: some View {
@@ -97,6 +98,20 @@ struct SettingsView: View {
                 Text("Storage")
             } footer: {
                 Text("Clearing the audio cache only removes cached audio.")
+            }
+
+            Section("Playback") {
+                NavigationLink {
+                    EqualizerView()
+                } label: {
+                    HStack {
+                        Text("Equalizer")
+                        Spacer()
+                        Text(eqSettings.isEnabled ? "On" : "Off")
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                    }
+                }
             }
 
             Section("Account") {
