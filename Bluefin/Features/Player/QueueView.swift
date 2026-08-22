@@ -80,9 +80,7 @@ struct QueueView: View {
                             }
                         }
                         .listStyle(.plain)
-
                         .animation(nil, value: player.queue)
-                        .environment(\.editMode, .constant(.active))
                         .onAppear {
                             proxy.scrollTo(player.currentIndex, anchor: .center)
                         }
