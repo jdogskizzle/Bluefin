@@ -54,8 +54,9 @@ actor DownloadStore {
     /// Cooperatively cancellable — `DownloadManager` cancels the enclosing `Task`, which surfaces
     /// here as a thrown `CancellationError`/`URLError.cancelled` from `URLSession`.
     func download(item: BaseItemDto) async {
-        guard fetchTrack(id: item.Id) == nil, !activeDownloads.contains(item.Id),
-              let remoteURL = await JellyfinAPIClient.shared.streamURL(itemId: item.Id) else { return }
+        guard fetchTrack(id: item.Id) == nil, !activeDownloads.contains(item.Id) else { return }
+        let bitrate = await StreamingQualitySettings.shared.downloadQuality.bitRateKbps
+        guard let remoteURL = await JellyfinAPIClient.shared.streamURL(itemId: item.Id, maxBitrateKbps: bitrate) else { return }
 
         activeDownloads.insert(item.Id)
         defer { activeDownloads.remove(item.Id) }

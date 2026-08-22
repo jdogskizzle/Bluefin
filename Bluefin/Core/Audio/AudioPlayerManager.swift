@@ -300,7 +300,8 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         if let localURL = await CacheManager.shared.localFileURL(forItemId: item.Id) {
             return localURL
         }
-        guard let remoteURL = JellyfinAPIClient.shared.streamURL(itemId: item.Id) else { return nil }
+        let bitrate = StreamingQualitySettings.shared.currentStreamingBitrateKbps()
+        guard let remoteURL = JellyfinAPIClient.shared.streamURL(itemId: item.Id, maxBitrateKbps: bitrate) else { return nil }
         cache(item, from: remoteURL)
         return remoteURL
     }
@@ -309,10 +310,11 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         let lookahead = CacheManager.preCacheLookahead
         guard lookahead > 0 else { return }
 
+        let bitrate = StreamingQualitySettings.shared.currentStreamingBitrateKbps()
         for offset in 1...lookahead {
             guard queue.indices.contains(currentIndex + offset) else { break }
             let item = queue[currentIndex + offset]
-            guard let remoteURL = JellyfinAPIClient.shared.streamURL(itemId: item.Id) else { continue }
+            guard let remoteURL = JellyfinAPIClient.shared.streamURL(itemId: item.Id, maxBitrateKbps: bitrate) else { continue }
             cache(item, from: remoteURL)
         }
     }

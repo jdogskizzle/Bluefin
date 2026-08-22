@@ -155,6 +155,11 @@ struct SettingsView: View {
                             .font(.footnote)
                     }
                 }
+                NavigationLink {
+                    QualitySettingsView()
+                } label: {
+                    Text("Quality")
+                }
             }
 
             Section("Account") {

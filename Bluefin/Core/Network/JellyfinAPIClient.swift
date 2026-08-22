@@ -429,13 +429,20 @@ class JellyfinAPIClient: ObservableObject {
         return components?.url
     }
 
-    func streamURL(itemId: String) -> URL? {
+    /// `maxBitrateKbps` of `nil` requests the original file untouched (`static=true`, no
+    /// transcoding); any other value asks Jellyfin to transcode down to that bitrate instead.
+    func streamURL(itemId: String, maxBitrateKbps: Int? = nil) -> URL? {
         guard let serverURL, let accessToken else { return nil }
         var components = URLComponents(url: serverURL.appendingPathComponent("Audio/\(itemId)/stream"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "static", value: "true"),
-            URLQueryItem(name: "api_key", value: accessToken)
-        ]
+        var queryItems = [URLQueryItem(name: "api_key", value: accessToken)]
+        if let maxBitrateKbps {
+            queryItems.append(URLQueryItem(name: "static", value: "false"))
+            queryItems.append(URLQueryItem(name: "audioBitRate", value: String(maxBitrateKbps * 1000)))
+            queryItems.append(URLQueryItem(name: "audioCodec", value: "aac"))
+        } else {
+            queryItems.append(URLQueryItem(name: "static", value: "true"))
+        }
+        components?.queryItems = queryItems
         return components?.url
     }
 }
