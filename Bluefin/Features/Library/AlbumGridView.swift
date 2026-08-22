@@ -19,6 +19,7 @@ struct AlbumGridView: View {
     let bannerItemId: String?
     @StateObject private var viewModel: LibraryListViewModel
     @ObservedObject private var sortPreference = AlbumSortPreference.shared
+    @ObservedObject private var releaseCache = LidarrReleaseCache.shared
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
@@ -45,6 +46,11 @@ struct AlbumGridView: View {
     /// rather than being pushed to one end of the list. `ProductionYear` alone isn't precise enough
     /// on its own — two albums released in the same year would otherwise tie and fall back to
     /// whatever order the sync happened to store them in.
+    private var artistUpcomingReleases: [LidarrCalendarItem] {
+        guard isArtistPage else { return [] }
+        return releaseCache.upcomingReleases.filter { $0.artistName == title }
+    }
+
     private func releaseDateKey(for album: BaseItemDto) -> Date {
         if let premiereDate = album.premiereDate {
             return premiereDate
@@ -72,6 +78,11 @@ struct AlbumGridView: View {
                 ScrollView {
                     if let bannerItemId {
                         banner(itemId: bannerItemId)
+                    }
+                    if !artistUpcomingReleases.isEmpty {
+                        LidarrUpcomingReleasesSection(title: "Upcoming Releases", releases: artistUpcomingReleases)
+                            .padding(.horizontal)
+                            .padding(.top, 12)
                     }
                     LazyVGrid(columns: columns, spacing: 24) {
                         ForEach(displayedItems) { album in

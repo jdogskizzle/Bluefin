@@ -43,6 +43,9 @@ struct LibraryView: View {
             .navigationDestination(for: LibraryRoute.self) { route in
                 LibraryDestinationView(route: route)
             }
+            .navigationDestination(for: LidarrCalendarItem.self) { release in
+                LidarrAlbumDetailView(release: release)
+            }
         }
     }
 }

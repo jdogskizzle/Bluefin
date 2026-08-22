@@ -21,7 +21,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if !releaseCache.upcomingReleases.isEmpty {
-                        upcomingReleasesSection
+                        LidarrUpcomingReleasesSection(title: "Upcoming Releases", releases: releaseCache.upcomingReleases)
                     }
 
                     if let pinnedPlaylist {
@@ -110,56 +110,6 @@ struct HomeView: View {
 
             PlayShuffleBar(songs: pinnedPlaylistSongs)
         }
-    }
-
-    private var upcomingReleasesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Upcoming Releases")
-                .font(.headline)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(releaseCache.upcomingReleases) { release in
-                        upcomingReleaseCard(release)
-                    }
-                }
-            }
-        }
-    }
-
-    private func upcomingReleaseCard(_ release: LidarrCalendarItem) -> some View {
-        NavigationLink(value: release) {
-            VStack(alignment: .leading, spacing: 4) {
-                AsyncImage(url: release.coverImageURL(serverURL: lidarrClient.serverURL, apiKey: lidarrClient.apiKey)) { phase in
-                    if let image = phase.image {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.secondary.opacity(0.15))
-                            .overlay(Image(systemName: "opticaldisc").foregroundStyle(.secondary))
-                    }
-                }
-                .frame(width: 120, height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                Text(release.title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(release.artistName)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                if let releaseDate = release.releaseDate {
-                    Text(releaseDate.formatted(.dateTime.month(.abbreviated).day()))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 120)
-        }
-        .buttonStyle(.plain)
     }
 }
 

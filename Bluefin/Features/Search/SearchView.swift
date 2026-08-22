@@ -70,6 +70,9 @@ struct SearchView: View {
             .navigationDestination(for: LibraryRoute.self) { route in
                 LibraryDestinationView(route: route)
             }
+            .navigationDestination(for: LidarrCalendarItem.self) { release in
+                LidarrAlbumDetailView(release: release)
+            }
             .task(id: viewModel.query) {
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 guard !Task.isCancelled else { return }
