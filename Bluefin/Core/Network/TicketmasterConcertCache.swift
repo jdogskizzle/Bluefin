@@ -17,6 +17,25 @@ struct ArtistConcerts: Identifiable, Hashable {
 
     var id: String { artistId }
     var nextDate: Date? { events.first?.date }
+
+    /// Ticketmaster has no dedicated "tour name" field, but almost every date on the same tour
+    /// shares an identical event name (e.g. "Billie Eilish: HIT ME HARD AND SOFT: THE TOUR") — the
+    /// most common name across this artist's shows is a reliable stand-in, shown at the top of
+    /// `ArtistConcertsView`. `nil` when it's indistinguishable from the artist's own name (a small
+    /// local show with no real "tour" branding), so that page doesn't show a redundant duplicate.
+    var tourName: String? {
+        let counts = Dictionary(grouping: events, by: \.name).mapValues(\.count)
+        guard let mostCommon = counts.max(by: { $0.value < $1.value })?.key,
+              Self.normalizedForComparison(mostCommon) != Self.normalizedForComparison(artistName) else {
+            return nil
+        }
+        return mostCommon
+    }
+
+    private static func normalizedForComparison(_ string: String) -> String {
+        string.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 /// Upcoming concerts for every artist in the synced library, fetched together up front (once per app
@@ -108,6 +127,14 @@ final class TicketmasterConcertCache: ObservableObject {
                 return ArtistConcerts(artistId: artist.artistId, artistName: artist.artistName, events: matchingEvents)
             }
             .sorted { ($0.nextDate ?? .distantFuture) < ($1.nextDate ?? .distantFuture) }
+    }
+
+    /// The full, worldwide event list for one artist, ignoring the current region filter — backs
+    /// `ArtistConcertsView`'s ephemeral "Show All Locations" toggle, which needs to look past the
+    /// filter without changing it (that toggle is plain view `@State`, never written here or
+    /// anywhere else, so it has no lasting effect on `artistConcerts`).
+    func rawEvents(forArtistId artistId: String) -> [TicketmasterEvent]? {
+        rawArtistConcerts.first { $0.artistId == artistId }?.events
     }
 
     /// Drops an artist from the already-loaded results immediately, so blacklisting from the Home

@@ -52,6 +52,19 @@ struct TicketmasterEvent: Identifiable, Hashable {
     let countryCode: String?
     let eventURL: URL?
     let imageURL: URL?
+    let statusCode: String?
+    let priceRangeText: String?
+
+    /// `nil` for the ordinary "onsale"/"offsale" states — only worth surfacing when something's
+    /// actually changed about the show.
+    var statusLabel: String? {
+        switch statusCode {
+        case "cancelled": return "Cancelled"
+        case "postponed": return "Postponed"
+        case "rescheduled": return "Rescheduled"
+        default: return nil
+        }
+    }
 }
 
 /// Per-user Ticketmaster Discovery API access — unlike Jellyfin or Lidarr, there's no self-hosted
@@ -183,15 +196,20 @@ private struct TicketmasterRawEvent: Decodable {
     let url: String?
     let images: [RawImage]?
     let dates: RawDates
+    let priceRanges: [RawPriceRange]?
     let embedded: Embedded?
-    enum CodingKeys: String, CodingKey { case id, name, url, images, dates, embedded = "_embedded" }
+    enum CodingKeys: String, CodingKey { case id, name, url, images, dates, priceRanges, embedded = "_embedded" }
 
     struct RawImage: Decodable { let url: String; let width: Int? }
 
     struct RawDates: Decodable {
         let start: RawStart
+        let status: RawStatus?
         struct RawStart: Decodable { let localDate: String?; let dateTime: String? }
+        struct RawStatus: Decodable { let code: String? }
     }
+
+    struct RawPriceRange: Decodable { let currency: String?; let min: Double?; let max: Double? }
 
     struct Embedded: Decodable {
         let venues: [RawVenue]?
@@ -237,7 +255,16 @@ private extension TicketmasterEvent {
             stateCode: venue?.state?.stateCode,
             countryCode: venue?.country?.countryCode,
             eventURL: raw.url.flatMap(URL.init),
-            imageURL: widestImage.flatMap { URL(string: $0.url) }
+            imageURL: widestImage.flatMap { URL(string: $0.url) },
+            statusCode: raw.dates.status?.code,
+            priceRangeText: Self.formatPriceRange(raw.priceRanges?.first)
         )
+    }
+
+    private static func formatPriceRange(_ range: TicketmasterRawEvent.RawPriceRange?) -> String? {
+        guard let range, let min = range.min, let max = range.max else { return nil }
+        let prefix = range.currency == "USD" ? "$" : (range.currency.map { "\($0) " } ?? "")
+        guard Int(min) != Int(max) else { return "\(prefix)\(Int(min))" }
+        return "\(prefix)\(Int(min))–\(prefix)\(Int(max))"
     }
 }
