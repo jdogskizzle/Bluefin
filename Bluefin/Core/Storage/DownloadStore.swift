@@ -77,25 +77,18 @@ actor DownloadStore {
         return false
     }
 
+    /// Runs the transfer on `BackgroundDownloadSession` (not `URLSession.shared`) so it keeps going
+    /// while the app is backgrounded, the screen is locked, or even if iOS suspends the app process
+    /// entirely — a plain foreground session's tasks stop almost as soon as the app leaves the
+    /// foreground.
     private func attemptDownload(item: BaseItemDto, from remoteURL: URL) async -> Bool {
         do {
-            let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                try? FileManager.default.removeItem(at: tempURL)
-                return false
-            }
-
-            // Unlike a network URL, a local file has no Content-Type for AVPlayer to sniff — it
-            // relies on the path extension to pick a demuxer, so we derive one from the response.
-            let ext = Self.fileExtension(forMIMEType: http.value(forHTTPHeaderField: "Content-Type"))
-            let destinationURL = downloadsDirectoryURL.appendingPathComponent("\(item.Id).\(ext)")
-            try? FileManager.default.removeItem(at: destinationURL)
-            try FileManager.default.moveItem(at: tempURL, to: destinationURL)
-
-            let attributes = try? FileManager.default.attributesOfItem(atPath: destinationURL.path)
-            let fileSize = (attributes?[.size] as? Int64) ?? 0
-
-            let track = DownloadedTrack(item: item, localFilePath: destinationURL.path, fileSizeBytes: fileSize)
+            let (tempURL, response) = try await BackgroundDownloadSession.shared.download(
+                remoteURL: remoteURL,
+                payload: DownloadTaskPayload(item: item)
+            )
+            guard let (path, size) = finalizeFile(id: item.Id, tempFileURL: tempURL, response: response) else { return false }
+            let track = DownloadedTrack(item: item, localFilePath: path, fileSizeBytes: size)
             modelContext.insert(track)
             try? modelContext.save()
             return true
@@ -103,6 +96,51 @@ actor DownloadStore {
             // A failed attempt just means this one didn't land — the caller retries or gives up.
             return false
         }
+    }
+
+    /// Finishes a download whose original caller no longer exists — iOS terminated the app while
+    /// this transfer was in flight and relaunched it only to hand off the finished file (see
+    /// `BackgroundDownloadSession`). There's no `activeDownloads`/retry bookkeeping to update here,
+    /// since none of that survived the relaunch either; this just needs to land the file and record
+    /// it, the same as a normal completion would.
+    func finalizeColdDownload(payload: DownloadTaskPayload, tempFileURL: URL, response: HTTPURLResponse?) {
+        guard fetchTrack(id: payload.id) == nil else {
+            try? FileManager.default.removeItem(at: tempFileURL)
+            return
+        }
+        guard let (path, size) = finalizeFile(id: payload.id, tempFileURL: tempFileURL, response: response) else { return }
+        let track = DownloadedTrack(
+            id: payload.id,
+            title: payload.title,
+            artistName: payload.artistName,
+            albumName: payload.albumName,
+            albumId: payload.albumId,
+            durationTicks: payload.durationTicks,
+            localFilePath: path,
+            fileSizeBytes: size
+        )
+        modelContext.insert(track)
+        try? modelContext.save()
+    }
+
+    /// Validates the response and moves the downloaded file into its permanent location — shared by
+    /// the normal (app-alive) and cold (post-relaunch) completion paths.
+    private func finalizeFile(id: String, tempFileURL: URL, response: HTTPURLResponse?) -> (path: String, size: Int64)? {
+        guard let response, (200...299).contains(response.statusCode) else {
+            try? FileManager.default.removeItem(at: tempFileURL)
+            return nil
+        }
+
+        // Unlike a network URL, a local file has no Content-Type for AVPlayer to sniff — it relies
+        // on the path extension to pick a demuxer, so we derive one from the response.
+        let ext = Self.fileExtension(forMIMEType: response.value(forHTTPHeaderField: "Content-Type"))
+        let destinationURL = downloadsDirectoryURL.appendingPathComponent("\(id).\(ext)")
+        try? FileManager.default.removeItem(at: destinationURL)
+        guard (try? FileManager.default.moveItem(at: tempFileURL, to: destinationURL)) != nil else { return nil }
+
+        let attributes = try? FileManager.default.attributesOfItem(atPath: destinationURL.path)
+        let fileSize = (attributes?[.size] as? Int64) ?? 0
+        return (destinationURL.path, fileSize)
     }
 
     func remove(itemId: String) {
