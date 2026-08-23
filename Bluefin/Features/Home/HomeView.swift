@@ -13,6 +13,8 @@ struct HomeView: View {
     @ObservedObject private var navigator = AppNavigator.shared
     @ObservedObject private var lidarrClient = LidarrAPIClient.shared
     @ObservedObject private var releaseCache = LidarrReleaseCache.shared
+    @ObservedObject private var ticketmasterClient = TicketmasterAPIClient.shared
+    @ObservedObject private var concertCache = TicketmasterConcertCache.shared
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
     @State private var pinnedPlaylist: BaseItemDto?
     @State private var pinnedPlaylistSongs: [BaseItemDto] = []
@@ -24,6 +26,10 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if !releaseCache.upcomingReleases.isEmpty {
                         LidarrUpcomingReleasesSection(title: "Upcoming Releases", releases: releaseCache.upcomingReleases)
+                    }
+
+                    if !concertCache.artistConcerts.isEmpty {
+                        TicketmasterUpcomingConcertsSection(artistConcerts: concertCache.artistConcerts)
                     }
 
                     if let pinnedPlaylist {
@@ -51,12 +57,18 @@ struct HomeView: View {
             .navigationDestination(for: LidarrCalendarItem.self) { release in
                 LidarrAlbumDetailView(release: release)
             }
+            .navigationDestination(for: ArtistConcerts.self) { concerts in
+                ArtistConcertsView(concerts: concerts)
+            }
         }
         .task(id: pinnedStore.pinnedPlaylistId) {
             await loadPinnedPlaylist()
         }
         .task(id: lidarrClient.isConnected) {
             await releaseCache.refresh()
+        }
+        .task(id: ticketmasterClient.isConnected) {
+            await concertCache.refresh()
         }
         .task {
             await randomizeAlbum()

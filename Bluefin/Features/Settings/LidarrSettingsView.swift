@@ -65,6 +65,7 @@ struct LidarrSettingsView: View {
                 }
             }
         }
+        .avoidsMiniPlayer()
         .navigationTitle("Lidarr")
         .navigationBarTitleDisplayMode(.inline)
     }

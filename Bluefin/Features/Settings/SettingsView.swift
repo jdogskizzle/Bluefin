@@ -14,6 +14,7 @@ struct SettingsView: View {
     @ObservedObject private var syncManager = LibrarySyncManager.shared
     @ObservedObject private var eqSettings = EqualizerSettings.shared
     @ObservedObject private var lidarrClient = LidarrAPIClient.shared
+    @ObservedObject private var ticketmasterClient = TicketmasterAPIClient.shared
     @State private var showSync = false
     @State private var showClearDownloadsConfirmation = false
 
@@ -180,6 +181,17 @@ struct SettingsView: View {
                         Text("Lidarr")
                         Spacer()
                         Text(lidarrClient.isConnected ? "Connected" : "Not Connected")
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                    }
+                }
+                NavigationLink {
+                    TicketmasterSettingsView()
+                } label: {
+                    HStack {
+                        Text("Ticketmaster")
+                        Spacer()
+                        Text(ticketmasterClient.isConnected ? "Connected" : "Not Connected")
                             .foregroundStyle(.secondary)
                             .font(.footnote)
                     }
