@@ -157,6 +157,19 @@ final class LibrarySyncManager: ObservableObject {
                 _ = await CacheManager.shared.lyrics(for: song)
             }
 
+            // Anything downloaded that's no longer in what the server just returned was deleted
+            // server-side since the last sync — without this, its offline copy would linger forever
+            // with no way to notice or remove it from within the app.
+            let removedDownloads = await DownloadManager.shared.pruneDeletedDownloads(
+                validSongIds: Set(songs.map(\.Id)),
+                validArtistIds: Set(artists.map(\.Id)),
+                validAlbumIds: Set(albums.map(\.Id)),
+                validPlaylistIds: Set(playlists.map(\.Id))
+            )
+            if removedDownloads > 0 {
+                ToastCenter.shared.show("Removed \(removedDownloads) download\(removedDownloads == 1 ? "" : "s") no longer on the server")
+            }
+
             lastSyncedAt = .now
             UserDefaults.standard.set(lastSyncedAt, forKey: Self.lastSyncedDefaultsKey)
             await FavoritesStore.shared.refreshFromSync()

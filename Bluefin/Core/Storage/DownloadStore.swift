@@ -210,6 +210,49 @@ actor DownloadStore {
         }
     }
 
+    /// Called after a full library sync, once the fresh set of item ids that still exist on the
+    /// server is known — removes any downloaded track whose id isn't in that set (deleted server-side
+    /// since the last sync), and any downloaded group (artist/album/playlist) whose own container id
+    /// is gone, taking its songs down with it unless another still-valid group also claims them.
+    /// Without this, a download for something the user deleted on the server would linger forever
+    /// with no way to notice or remove it from within the app.
+    @discardableResult
+    func pruneDeleted(validSongIds: Set<String>, validArtistIds: Set<String>, validAlbumIds: Set<String>, validPlaylistIds: Set<String>) -> Int {
+        func stillExists(_ group: DownloadedGroup) -> Bool {
+            switch group.kind {
+            case "artist": return validArtistIds.contains(group.id)
+            case "album": return validAlbumIds.contains(group.id)
+            case "playlist": return validPlaylistIds.contains(group.id)
+            default: return false
+            }
+        }
+
+        let groupDescriptor = FetchDescriptor<DownloadedGroup>()
+        let groups = (try? modelContext.fetch(groupDescriptor)) ?? []
+        let invalidGroups = groups.filter { !stillExists($0) }
+        let validGroups = groups.filter(stillExists)
+
+        var songIdsToRemove = Set(invalidGroups.flatMap(\.songIds))
+        for group in validGroups {
+            songIdsToRemove.subtract(group.songIds)
+        }
+        for group in invalidGroups {
+            modelContext.delete(group)
+        }
+
+        let trackDescriptor = FetchDescriptor<DownloadedTrack>()
+        let tracks = (try? modelContext.fetch(trackDescriptor)) ?? []
+        var removedCount = 0
+        for track in tracks where !validSongIds.contains(track.id) || songIdsToRemove.contains(track.id) {
+            try? FileManager.default.removeItem(atPath: track.localFilePath)
+            modelContext.delete(track)
+            removedCount += 1
+        }
+
+        try? modelContext.save()
+        return removedCount
+    }
+
     func count() -> Int {
         let descriptor = FetchDescriptor<DownloadedTrack>()
         return (try? modelContext.fetchCount(descriptor)) ?? 0

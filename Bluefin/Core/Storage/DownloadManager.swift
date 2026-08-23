@@ -162,6 +162,22 @@ final class DownloadManager: ObservableObject {
         downloadedItemIds = await DownloadStore.shared.downloadedTrackIds()
     }
 
+    /// Called after a full library sync — drops any download whose underlying item is no longer on
+    /// the server, so a deleted artist/album/playlist/song doesn't leave an offline copy behind with
+    /// no way to notice or remove it.
+    @discardableResult
+    func pruneDeletedDownloads(
+        validSongIds: Set<String>, validArtistIds: Set<String>, validAlbumIds: Set<String>, validPlaylistIds: Set<String>
+    ) async -> Int {
+        let removedCount = await DownloadStore.shared.pruneDeleted(
+            validSongIds: validSongIds, validArtistIds: validArtistIds, validAlbumIds: validAlbumIds, validPlaylistIds: validPlaylistIds
+        )
+        guard removedCount > 0 else { return 0 }
+        await refreshDownloadedIds()
+        await refreshDownloadedGroups()
+        return removedCount
+    }
+
     func refreshDownloadedGroups() async {
         let groups = await DownloadStore.shared.downloadedGroups()
         downloadedGroups = groups.compactMap { info in
