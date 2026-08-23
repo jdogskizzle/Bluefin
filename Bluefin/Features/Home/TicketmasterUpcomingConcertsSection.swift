@@ -15,8 +15,19 @@ struct TicketmasterUpcomingConcertsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Upcoming Concerts")
-                .font(.headline)
+            NavigationLink(value: AllUpcomingConcertsRoute()) {
+                HStack {
+                    Text("Upcoming Concerts")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {

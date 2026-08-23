@@ -26,7 +26,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if !releaseCache.upcomingReleases.isEmpty {
-                        LidarrUpcomingReleasesSection(title: "Upcoming Releases", releases: releaseCache.upcomingReleases)
+                        LidarrUpcomingReleasesSection(title: "Upcoming Releases", releases: releaseCache.upcomingReleases, showsSeeAllLink: true)
                     }
 
                     if !concertCache.artistConcerts.isEmpty {
@@ -60,6 +60,12 @@ struct HomeView: View {
             }
             .navigationDestination(for: ArtistConcerts.self) { concerts in
                 ArtistConcertsView(concerts: concerts)
+            }
+            .navigationDestination(for: AllUpcomingReleasesRoute.self) { _ in
+                AllUpcomingReleasesView()
+            }
+            .navigationDestination(for: AllUpcomingConcertsRoute.self) { _ in
+                AllUpcomingConcertsView()
             }
         }
         .task(id: pinnedStore.pinnedPlaylistId) {

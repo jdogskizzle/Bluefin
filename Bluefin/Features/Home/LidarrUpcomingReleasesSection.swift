@@ -12,11 +12,14 @@ import SwiftUI
 struct LidarrUpcomingReleasesSection: View {
     let title: String
     let releases: [LidarrCalendarItem]
+    /// Only the Home screen's own (all-followed-artists) section links to the full grid — an
+    /// artist's own album page reuses this same component for just that artist's releases, where a
+    /// "see all" pointing at every artist's releases would be a non sequitur.
+    var showsSeeAllLink = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
+            header
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
@@ -27,6 +30,33 @@ struct LidarrUpcomingReleasesSection: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var header: some View {
+        if showsSeeAllLink {
+            NavigationLink(value: AllUpcomingReleasesRoute()) {
+                headerLabel
+            }
+            .buttonStyle(.plain)
+        } else {
+            headerLabel
+        }
+    }
+
+    private var headerLabel: some View {
+        HStack {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.primary)
+            if showsSeeAllLink {
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .contentShape(Rectangle())
+    }
 }
 
 struct LidarrReleaseCard: View {
@@ -36,14 +66,12 @@ struct LidarrReleaseCard: View {
     var body: some View {
         NavigationLink(value: release) {
             VStack(alignment: .leading, spacing: 4) {
-                AsyncImage(url: release.coverImageURL(serverURL: client.serverURL, apiKey: client.apiKey)) { phase in
-                    if let image = phase.image {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.secondary.opacity(0.15))
-                            .overlay(Image(systemName: "opticaldisc").foregroundStyle(.secondary))
-                    }
+                CachedRemoteImage(url: release.coverImageURL(serverURL: client.serverURL, apiKey: client.apiKey)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.15))
+                        .overlay(Image(systemName: "opticaldisc").foregroundStyle(.secondary))
                 }
                 .frame(width: 120, height: 120)
                 .clipShape(RoundedRectangle(cornerRadius: 8))

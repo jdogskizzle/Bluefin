@@ -68,14 +68,12 @@ struct LidarrAlbumDetailView: View {
 
     private var artworkAndTitle: some View {
         VStack(spacing: 8) {
-            AsyncImage(url: release.coverImageURL(serverURL: client.serverURL, apiKey: client.apiKey)) { phase in
-                if let image = phase.image {
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.15))
-                        .overlay(Image(systemName: "opticaldisc").font(.largeTitle).foregroundStyle(.secondary))
-                }
+            CachedRemoteImage(url: release.coverImageURL(serverURL: client.serverURL, apiKey: client.apiKey)) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.secondary.opacity(0.15))
+                    .overlay(Image(systemName: "opticaldisc").font(.largeTitle).foregroundStyle(.secondary))
             }
             .aspectRatio(1, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 8))
