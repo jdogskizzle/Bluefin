@@ -9,6 +9,7 @@ import SwiftUI
 
 struct TicketmasterSettingsView: View {
     @ObservedObject private var client = TicketmasterAPIClient.shared
+    @ObservedObject private var blacklistStore = TicketmasterBlacklistStore.shared
     @State private var apiKeyString = ""
     @State private var isConnecting = false
     @State private var errorMessage: String?
@@ -23,7 +24,24 @@ struct TicketmasterSettingsView: View {
                 } footer: {
                     Text("Upcoming concerts for artists in your library will appear on the Home screen.")
                 }
-            } else {
+            }
+
+            Section {
+                NavigationLink {
+                    TicketmasterBlacklistView()
+                } label: {
+                    HStack {
+                        Text("Blacklisted Artists")
+                        Spacer()
+                        if !blacklistStore.blacklistedArtists.isEmpty {
+                            Text("\(blacklistStore.blacklistedArtists.count)")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if !client.isConnected {
                 Text("Connect to Ticketmaster to see upcoming concert dates for followed artists")
                 Section {
                     SecureField("API Key", text: $apiKeyString)

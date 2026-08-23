@@ -37,10 +37,17 @@ final class TicketmasterConcertCache: ObservableObject {
     private init() {}
 
     func refresh() async {
+        let blacklistedIds = TicketmasterBlacklistStore.shared.blacklistedArtistIds
         guard TicketmasterAPIClient.shared.isConnected,
               let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
-              let artists = await LibraryCache.shared.items(for: "artists:\(libraryId)"),
-              !artists.isEmpty else {
+              let allArtists = await LibraryCache.shared.items(for: "artists:\(libraryId)") else {
+            artistConcerts = []
+            return
+        }
+        // Skipped here, not just filtered out below, so a blacklisted artist doesn't cost part of
+        // the free tier's daily request quota on every refresh.
+        let artists = allArtists.filter { !blacklistedIds.contains($0.Id) }
+        guard !artists.isEmpty else {
             artistConcerts = []
             return
         }
@@ -63,6 +70,13 @@ final class TicketmasterConcertCache: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Drops an artist from the already-loaded results immediately, so blacklisting from the Home
+    /// screen or the concerts detail view takes effect right away rather than waiting for the next
+    /// `refresh()`.
+    func removeLocally(artistId: String) {
+        artistConcerts.removeAll { $0.artistId == artistId }
     }
 
     private static func fetchConcerts(for artist: BaseItemDto) async -> ArtistConcerts? {

@@ -64,5 +64,13 @@ private struct ArtistConcertsCard: View {
             .frame(width: 120)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                TicketmasterBlacklistStore.shared.blacklist(artistId: concerts.artistId, artistName: concerts.artistName)
+                TicketmasterConcertCache.shared.removeLocally(artistId: concerts.artistId)
+            } label: {
+                Label("Hide from Upcoming Concerts", systemImage: "eye.slash")
+            }
+        }
     }
 }

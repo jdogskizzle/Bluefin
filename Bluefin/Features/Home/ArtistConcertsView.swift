@@ -12,6 +12,8 @@ import SwiftUI
 struct ArtistConcertsView: View {
     let concerts: ArtistConcerts
 
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         List(concerts.events) { event in
             if let url = event.eventURL {
@@ -26,6 +28,21 @@ struct ArtistConcertsView: View {
         .avoidsMiniPlayer()
         .navigationTitle(concerts.artistName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(role: .destructive) {
+                        TicketmasterBlacklistStore.shared.blacklist(artistId: concerts.artistId, artistName: concerts.artistName)
+                        TicketmasterConcertCache.shared.removeLocally(artistId: concerts.artistId)
+                        dismiss()
+                    } label: {
+                        Label("Hide from Upcoming Concerts", systemImage: "eye.slash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
     }
 
     private func row(for event: TicketmasterEvent) -> some View {
