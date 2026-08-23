@@ -29,6 +29,12 @@ struct AlbumGridView: View {
     /// the plain top-level Albums grid keeps whatever order the sync produced.
     private var isArtistPage: Bool { bannerItemId != nil }
 
+    /// Only meaningful (and only ever read) when `isArtistPage` is true — `bannerItemId` is the
+    /// artist's own id in that case, so the `?? ""` fallback is never actually exercised.
+    private var artistGroupInfo: DownloadGroupInfo {
+        DownloadGroupInfo(id: bannerItemId ?? "", kind: .artist, name: title)
+    }
+
     private var displayedItems: [BaseItemDto] {
         guard isArtistPage else { return viewModel.items }
         return viewModel.items.sorted { lhs, rhs in
@@ -118,7 +124,7 @@ struct AlbumGridView: View {
                 }
             }
         }
-        .confirmRemoveDownload(songs: artistSongs, isPresented: $showRemoveDownloadConfirmation)
+        .confirmRemoveDownload(songs: artistSongs, group: artistGroupInfo, isPresented: $showRemoveDownloadConfirmation)
         .task {
             await viewModel.load()
         }
@@ -133,7 +139,7 @@ struct AlbumGridView: View {
                 Text("Release Date (Oldest First)").tag(AlbumSortOrder.releaseDateAscending)
                 Text("Release Date (Newest First)").tag(AlbumSortOrder.releaseDateDescending)
             }
-            ContainerDownloadButton(songs: artistSongs, showRemoveConfirmation: $showRemoveDownloadConfirmation)
+            ContainerDownloadButton(songs: artistSongs, group: artistGroupInfo, showRemoveConfirmation: $showRemoveDownloadConfirmation)
         } label: {
             Image(systemName: "ellipsis.circle")
         }

@@ -63,13 +63,21 @@ struct AlbumDetailView: View {
                     } label: {
                         Label("Add to Queue", systemImage: "text.insert")
                     }
-                    ContainerDownloadButton(songs: viewModel.items, showRemoveConfirmation: $showRemoveDownloadConfirmation)
+                    ContainerDownloadButton(
+                        songs: viewModel.items,
+                        group: DownloadGroupInfo(id: album.Id, kind: .album, name: album.Name),
+                        showRemoveConfirmation: $showRemoveDownloadConfirmation
+                    )
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
             }
         }
-        .confirmRemoveDownload(songs: viewModel.items, isPresented: $showRemoveDownloadConfirmation)
+        .confirmRemoveDownload(
+            songs: viewModel.items,
+            group: DownloadGroupInfo(id: album.Id, kind: .album, name: album.Name),
+            isPresented: $showRemoveDownloadConfirmation
+        )
         .task {
             await viewModel.load()
         }

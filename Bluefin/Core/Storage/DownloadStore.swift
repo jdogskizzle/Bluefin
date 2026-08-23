@@ -50,22 +50,39 @@ actor DownloadStore {
         return Set(tracks.map(\.id))
     }
 
-    /// Downloads `item` fresh from the server if it isn't already downloaded or in flight.
-    /// Cooperatively cancellable — `DownloadManager` cancels the enclosing `Task`, which surfaces
-    /// here as a thrown `CancellationError`/`URLError.cancelled` from `URLSession`.
-    func download(item: BaseItemDto) async {
-        guard fetchTrack(id: item.Id) == nil, !activeDownloads.contains(item.Id) else { return }
+    /// Downloads `item` fresh from the server if it isn't already downloaded or in flight, retrying
+    /// a couple of times on failure — across a large batch (e.g. a whole artist), a handful of
+    /// individual requests timing out or hiccuping is common enough that a silent single attempt
+    /// was leaving songs quietly missing. Cooperatively cancellable — `DownloadManager` cancels the
+    /// enclosing `Task`, which is checked between attempts so a cancelled download doesn't retry.
+    @discardableResult
+    func download(item: BaseItemDto) async -> Bool {
+        if fetchTrack(id: item.Id) != nil { return true }
+        guard !activeDownloads.contains(item.Id) else { return false }
         let bitrate = await StreamingQualitySettings.shared.downloadQuality.bitRateKbps
-        guard let remoteURL = await JellyfinAPIClient.shared.streamURL(itemId: item.Id, maxBitrateKbps: bitrate) else { return }
+        guard let remoteURL = await JellyfinAPIClient.shared.streamURL(itemId: item.Id, maxBitrateKbps: bitrate) else { return false }
 
         activeDownloads.insert(item.Id)
         defer { activeDownloads.remove(item.Id) }
 
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            guard !Task.isCancelled else { return false }
+            if await attemptDownload(item: item, from: remoteURL) {
+                return true
+            }
+            guard attempt < maxAttempts else { return false }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        return false
+    }
+
+    private func attemptDownload(item: BaseItemDto, from remoteURL: URL) async -> Bool {
         do {
             let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 try? FileManager.default.removeItem(at: tempURL)
-                return
+                return false
             }
 
             // Unlike a network URL, a local file has no Content-Type for AVPlayer to sniff — it
@@ -81,8 +98,10 @@ actor DownloadStore {
             let track = DownloadedTrack(item: item, localFilePath: destinationURL.path, fileSizeBytes: fileSize)
             modelContext.insert(track)
             try? modelContext.save()
+            return true
         } catch {
-            // A failed or cancelled download just means this track stays undownloaded.
+            // A failed attempt just means this one didn't land — the caller retries or gives up.
+            return false
         }
     }
 
@@ -90,6 +109,7 @@ actor DownloadStore {
         guard let track = fetchTrack(id: itemId) else { return }
         try? FileManager.default.removeItem(atPath: track.localFilePath)
         modelContext.delete(track)
+        deleteGroups(containingSongId: itemId)
         try? modelContext.save()
     }
 
@@ -100,7 +120,56 @@ actor DownloadStore {
             try? FileManager.default.removeItem(atPath: track.localFilePath)
             modelContext.delete(track)
         }
+        let groupDescriptor = FetchDescriptor<DownloadedGroup>()
+        let groups = (try? modelContext.fetch(groupDescriptor)) ?? []
+        for group in groups {
+            modelContext.delete(group)
+        }
         try? modelContext.save()
+    }
+
+    struct GroupInfo: Sendable {
+        let id: String
+        let kind: String
+        let name: String
+        let songIds: [String]
+    }
+
+    /// Records (or updates) that a whole artist/album/playlist was downloaded as a unit.
+    func recordGroup(id: String, kind: String, name: String, songIds: [String]) {
+        let descriptor = FetchDescriptor<DownloadedGroup>(predicate: #Predicate { $0.id == id })
+        if let existing = try? modelContext.fetch(descriptor).first {
+            existing.kind = kind
+            existing.name = name
+            existing.songIds = songIds
+        } else {
+            modelContext.insert(DownloadedGroup(id: id, kind: kind, name: name, songIds: songIds))
+        }
+        try? modelContext.save()
+    }
+
+    func removeGroup(id: String) {
+        let descriptor = FetchDescriptor<DownloadedGroup>(predicate: #Predicate { $0.id == id })
+        guard let entry = try? modelContext.fetch(descriptor).first else { return }
+        modelContext.delete(entry)
+        try? modelContext.save()
+    }
+
+    func downloadedGroups() -> [GroupInfo] {
+        let descriptor = FetchDescriptor<DownloadedGroup>()
+        let groups = (try? modelContext.fetch(descriptor)) ?? []
+        return groups.map { GroupInfo(id: $0.id, kind: $0.kind, name: $0.name, songIds: $0.songIds) }
+    }
+
+    /// A group is only meaningful while every one of its songs is still downloaded — deletes any
+    /// group containing `songId` rather than leaving a partial one; its other songs simply fall
+    /// back to showing individually.
+    private func deleteGroups(containingSongId songId: String) {
+        let descriptor = FetchDescriptor<DownloadedGroup>()
+        let groups = (try? modelContext.fetch(descriptor)) ?? []
+        for group in groups where group.songIds.contains(songId) {
+            modelContext.delete(group)
+        }
     }
 
     func count() -> Int {

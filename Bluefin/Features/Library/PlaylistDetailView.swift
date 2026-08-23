@@ -143,7 +143,11 @@ struct PlaylistDetailView: View {
                     } label: {
                         Label("Add to Queue", systemImage: "text.insert")
                     }
-                    ContainerDownloadButton(songs: viewModel.items, showRemoveConfirmation: $showRemoveDownloadConfirmation)
+                    ContainerDownloadButton(
+                        songs: viewModel.items,
+                        group: DownloadGroupInfo(id: playlist.Id, kind: .playlist, name: displayName),
+                        showRemoveConfirmation: $showRemoveDownloadConfirmation
+                    )
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -165,7 +169,11 @@ struct PlaylistDetailView: View {
             }
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
-        .confirmRemoveDownload(songs: viewModel.items, isPresented: $showRemoveDownloadConfirmation)
+        .confirmRemoveDownload(
+            songs: viewModel.items,
+            group: DownloadGroupInfo(id: playlist.Id, kind: .playlist, name: displayName),
+            isPresented: $showRemoveDownloadConfirmation
+        )
         .onChange(of: selectedPhotoItem) { _, newItem in
             Task { await applyNewImage(newItem) }
         }
