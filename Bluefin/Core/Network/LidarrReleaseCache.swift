@@ -18,6 +18,13 @@ final class LidarrReleaseCache: ObservableObject {
     @Published private(set) var upcomingReleases: [LidarrCalendarItem] = []
     @Published private(set) var tracksByAlbumId: [Int: [LidarrTrack]] = [:]
 
+    /// Set once a fetch has actually completed for the current connection. `HomeView`'s `.task`
+    /// re-runs `refresh()` every time it reappears — SwiftUI can tear down and rebuild an inactive
+    /// tab's view hierarchy, which restarts `.task` modifiers even though nothing actually changed —
+    /// so without this guard, switching tabs and back would silently re-fetch from Lidarr again on
+    /// every visit.
+    private var hasLoaded = false
+
     private init() {}
 
     func tracks(forAlbumId albumId: Int) -> [LidarrTrack]? {
@@ -25,12 +32,20 @@ final class LidarrReleaseCache: ObservableObject {
     }
 
     func refresh() async {
-        guard LidarrAPIClient.shared.isConnected,
-              let releases = try? await LidarrAPIClient.shared.fetchUpcomingReleases() else {
+        guard LidarrAPIClient.shared.isConnected else {
+            hasLoaded = false
             upcomingReleases = []
             tracksByAlbumId = [:]
             return
         }
+        guard !hasLoaded else { return }
+
+        guard let releases = try? await LidarrAPIClient.shared.fetchUpcomingReleases() else {
+            upcomingReleases = []
+            tracksByAlbumId = [:]
+            return
+        }
+        hasLoaded = true
         upcomingReleases = releases
 
         await withTaskGroup(of: (Int, [LidarrTrack]?).self) { group in

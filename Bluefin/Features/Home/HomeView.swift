@@ -15,6 +15,7 @@ struct HomeView: View {
     @ObservedObject private var releaseCache = LidarrReleaseCache.shared
     @ObservedObject private var ticketmasterClient = TicketmasterAPIClient.shared
     @ObservedObject private var concertCache = TicketmasterConcertCache.shared
+    @ObservedObject private var regionStore = TicketmasterRegionStore.shared
     @ObservedObject private var apiClient = JellyfinAPIClient.shared
     @State private var pinnedPlaylist: BaseItemDto?
     @State private var pinnedPlaylistSongs: [BaseItemDto] = []
@@ -69,6 +70,9 @@ struct HomeView: View {
         }
         .task(id: ticketmasterClient.isConnected) {
             await concertCache.refresh()
+        }
+        .task(id: regionStore.selectedRegion) {
+            concertCache.applyRegionFilter()
         }
         .task {
             await randomizeAlbum()

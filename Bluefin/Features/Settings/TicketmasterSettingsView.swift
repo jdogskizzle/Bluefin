@@ -10,6 +10,7 @@ import SwiftUI
 struct TicketmasterSettingsView: View {
     @ObservedObject private var client = TicketmasterAPIClient.shared
     @ObservedObject private var blacklistStore = TicketmasterBlacklistStore.shared
+    @ObservedObject private var regionStore = TicketmasterRegionStore.shared
     @State private var apiKeyString = ""
     @State private var isConnecting = false
     @State private var errorMessage: String?
@@ -27,6 +28,16 @@ struct TicketmasterSettingsView: View {
             }
 
             Section {
+                NavigationLink {
+                    TicketmasterRegionSettingsView()
+                } label: {
+                    HStack {
+                        Text("Region")
+                        Spacer()
+                        Text(regionStore.selectedRegion?.name ?? "All Regions")
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 NavigationLink {
                     TicketmasterBlacklistView()
                 } label: {

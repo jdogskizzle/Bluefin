@@ -49,6 +49,7 @@ struct TicketmasterEvent: Identifiable, Hashable {
     let venueName: String?
     let city: String?
     let stateCode: String?
+    let countryCode: String?
     let eventURL: URL?
     let imageURL: URL?
 }
@@ -201,8 +202,10 @@ private struct TicketmasterRawEvent: Decodable {
         let name: String?
         let city: RawCity?
         let state: RawState?
+        let country: RawCountry?
         struct RawCity: Decodable { let name: String? }
         struct RawState: Decodable { let stateCode: String? }
+        struct RawCountry: Decodable { let countryCode: String? }
     }
 
     struct RawAttraction: Decodable { let name: String? }
@@ -232,6 +235,7 @@ private extension TicketmasterEvent {
             venueName: venue?.name,
             city: venue?.city?.name,
             stateCode: venue?.state?.stateCode,
+            countryCode: venue?.country?.countryCode,
             eventURL: raw.url.flatMap(URL.init),
             imageURL: widestImage.flatMap { URL(string: $0.url) }
         )
