@@ -19,14 +19,16 @@ struct AlbumGridView: View {
     let bannerItemId: String?
     @StateObject private var viewModel: LibraryListViewModel
     @ObservedObject private var sortPreference = AlbumSortPreference.shared
+    @ObservedObject private var librarySortPreference = AlbumLibrarySortPreference.shared
     @ObservedObject private var releaseCache = LidarrReleaseCache.shared
     @State private var artistSongs: [BaseItemDto] = []
     @State private var showRemoveDownloadConfirmation = false
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
-    /// Only an artist's own albums page (identified by having a banner) sorts by release date —
-    /// the plain top-level Albums grid keeps whatever order the sync produced.
+    /// Only an artist's own albums page (identified by having a banner) sorts by release date via
+    /// `AlbumSortPreference` — the plain top-level Albums grid has its own, separate sort options
+    /// (see `AlbumLibrarySortPreference`) and is the only one of the two with year-grouped sections.
     private var isArtistPage: Bool { bannerItemId != nil }
 
     /// Only meaningful (and only ever read) when `isArtistPage` is true — `bannerItemId` is the
@@ -36,17 +38,67 @@ struct AlbumGridView: View {
     }
 
     private var displayedItems: [BaseItemDto] {
-        guard isArtistPage else { return viewModel.items }
-        return viewModel.items.sorted { lhs, rhs in
-            let lhsDate = releaseDateKey(for: lhs)
-            let rhsDate = releaseDateKey(for: rhs)
-            guard lhsDate != rhsDate else {
-                // Same key (e.g. neither has any date info at all) — fall back to name so the
-                // order is at least deterministic rather than whatever the sync happened to store.
-                return lhs.Name < rhs.Name
+        if isArtistPage {
+            return viewModel.items.sorted { lhs, rhs in
+                let lhsDate = releaseDateKey(for: lhs)
+                let rhsDate = releaseDateKey(for: rhs)
+                guard lhsDate != rhsDate else {
+                    // Same key (e.g. neither has any date info at all) — fall back to name so the
+                    // order is at least deterministic rather than whatever the sync happened to store.
+                    return lhs.Name < rhs.Name
+                }
+                return sortPreference.sortOrder == .releaseDateAscending ? lhsDate < rhsDate : lhsDate > rhsDate
             }
-            return sortPreference.sortOrder == .releaseDateAscending ? lhsDate < rhsDate : lhsDate > rhsDate
         }
+
+        switch librarySortPreference.sortOrder {
+        case .title:
+            return viewModel.items.sorted { $0.Name.localizedCaseInsensitiveCompare($1.Name) == .orderedAscending }
+        case .releaseDateAscending, .releaseDateDescending:
+            return viewModel.items.sorted { lhs, rhs in
+                let lhsDate = releaseDateKey(for: lhs)
+                let rhsDate = releaseDateKey(for: rhs)
+                guard lhsDate != rhsDate else {
+                    return lhs.Name.localizedCaseInsensitiveCompare(rhs.Name) == .orderedAscending
+                }
+                return librarySortPreference.sortOrder == .releaseDateAscending ? lhsDate < rhsDate : lhsDate > rhsDate
+            }
+        case .artistName:
+            return viewModel.items.sorted { lhs, rhs in
+                let comparison = (lhs.AlbumArtist ?? "").localizedCaseInsensitiveCompare(rhs.AlbumArtist ?? "")
+                guard comparison != .orderedSame else {
+                    return lhs.Name.localizedCaseInsensitiveCompare(rhs.Name) == .orderedAscending
+                }
+                return comparison == .orderedAscending
+            }
+        }
+    }
+
+    private var isSortedByReleaseDate: Bool {
+        !isArtistPage
+            && (librarySortPreference.sortOrder == .releaseDateAscending || librarySortPreference.sortOrder == .releaseDateDescending)
+    }
+
+    /// Consecutive runs of `displayedItems` grouped by release year — only meaningful on the
+    /// top-level Albums grid while sorted by release date, since that's the only order where
+    /// same-year albums actually land next to each other. Albums with no date info at all (see
+    /// `releaseDateKey`) group together as "Unknown" rather than being scattered by fallback name
+    /// order.
+    private var yearGroupedItems: [(year: String, items: [BaseItemDto])] {
+        var result: [(year: String, items: [BaseItemDto])] = []
+        for item in displayedItems {
+            let year = Self.yearLabel(for: releaseDateKey(for: item))
+            if let lastIndex = result.indices.last, result[lastIndex].year == year {
+                result[lastIndex].items.append(item)
+            } else {
+                result.append((year, [item]))
+            }
+        }
+        return result
+    }
+
+    private static func yearLabel(for date: Date) -> String {
+        date == .distantPast ? "Unknown" : String(Calendar(identifier: .gregorian).component(.year, from: date))
     }
 
     /// The precise `premiereDate` when available; otherwise January 1st of `ProductionYear` as a
@@ -93,19 +145,7 @@ struct AlbumGridView: View {
                             .padding(.top, 12)
                     }
                     LazyVGrid(columns: columns, spacing: 24) {
-                        ForEach(displayedItems) { album in
-                            NavigationLink(value: LibraryRoute.albumSongs(album)) {
-                                AlbumGridCell(album: album, subtitle: subtitle)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button {
-                                    Task { await addToQueue(album) }
-                                } label: {
-                                    Label("Add to Queue", systemImage: "text.insert")
-                                }
-                            }
-                        }
+                        gridContent
                     }
                     .padding()
                 }
@@ -118,9 +158,11 @@ struct AlbumGridView: View {
         .navigationBarTitleDisplayMode(bannerItemId != nil ? .inline : .automatic)
         .toolbarBackground(bannerItemId != nil ? .hidden : .automatic, for: .navigationBar)
         .toolbar {
-            if isArtistPage {
-                ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
+                if isArtistPage {
                     artistMenu
+                } else {
+                    libraryMenu
                 }
             }
         }
@@ -142,6 +184,58 @@ struct AlbumGridView: View {
             ContainerDownloadButton(songs: artistSongs, group: artistGroupInfo, showRemoveConfirmation: $showRemoveDownloadConfirmation)
         } label: {
             Image(systemName: "ellipsis.circle")
+        }
+    }
+
+    private var libraryMenu: some View {
+        Menu {
+            Picker("Sort", selection: $librarySortPreference.sortOrder) {
+                Text("Title").tag(AlbumLibrarySortOrder.title)
+                Text("Release Date (Oldest First)").tag(AlbumLibrarySortOrder.releaseDateAscending)
+                Text("Release Date (Newest First)").tag(AlbumLibrarySortOrder.releaseDateDescending)
+                Text("Artist Name").tag(AlbumLibrarySortOrder.artistName)
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+    }
+
+    /// A flat grid when not on the top-level Albums page, or sorted by title/artist name there;
+    /// grouped into `Section`s with a year header when the Albums page is sorted by release date,
+    /// so albums released the same year are visually set apart from the next/previous year's.
+    @ViewBuilder
+    private var gridContent: some View {
+        if isSortedByReleaseDate {
+            ForEach(yearGroupedItems, id: \.year) { group in
+                Section {
+                    ForEach(group.items) { album in
+                        albumCell(album)
+                    }
+                } header: {
+                    Text(group.year)
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        } else {
+            ForEach(displayedItems) { album in
+                albumCell(album)
+            }
+        }
+    }
+
+    private func albumCell(_ album: BaseItemDto) -> some View {
+        NavigationLink(value: LibraryRoute.albumSongs(album)) {
+            AlbumGridCell(album: album, subtitle: subtitle)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                Task { await addToQueue(album) }
+            } label: {
+                Label("Add to Queue", systemImage: "text.insert")
+            }
         }
     }
 
