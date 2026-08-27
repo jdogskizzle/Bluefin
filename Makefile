@@ -48,6 +48,7 @@ deploy-device:
 		-configuration Debug \
 		-destination "platform=iOS,id=$$DEVICE_ID" \
 		-derivedDataPath $(BUILD_DIR) \
+		-allowProvisioningUpdates \
 		build && \
 	xcrun devicectl device install app \
 		--device "$$DEVICE_ID" \
@@ -105,6 +106,7 @@ deploy-device-debug:
 		-configuration Debug \
 		-destination "platform=iOS,id=$$DEVICE_ID" \
 		-derivedDataPath $(BUILD_DIR) \
+		-allowProvisioningUpdates \
 		build && \
 	xcrun devicectl device install app \
 		--device "$$DEVICE_ID" \
