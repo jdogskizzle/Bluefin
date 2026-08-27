@@ -433,6 +433,13 @@ final class AudioPlayerManager: NSObject, ObservableObject {
             self?.pause()
             return .success
         }
+        // A single-button headphone remote (most wired headsets, and some Bluetooth ones) sends
+        // this instead of a separate play/pause command for its one button — without a target here,
+        // that button press has nowhere to go and silently does nothing.
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.togglePlayPause()
+            return .success
+        }
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             self?.skipToNext()
             return .success
