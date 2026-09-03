@@ -74,6 +74,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
     private var timeControlStatusObservation: NSKeyValueObservation?
 
     /// The Jellyfin play session currently being reported, if any — `nil` until playback actually
@@ -99,8 +100,36 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         addPeriodicTimeObserver()
         observeAppBackgrounding()
         observePlaybackReadiness()
+        observeRouteChanges()
         restorePlaybackState()
     }
+
+    /// Headphones/Bluetooth disconnecting mid-playback already makes iOS stop routing audio out loud
+    /// — but nothing here was watching for that, so this manager's own `isPlaying` state (and every
+    /// UI built on it: the mini player, Now Playing, lock-screen controls) kept reading "playing" for
+    /// audio that had actually already stopped. Pausing here keeps that state honest.
+    private func observeRouteChanges() {
+        #if canImport(UIKit)
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { notification in
+            guard let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt else { return }
+            Task { @MainActor [weak self] in
+                self?.handleRouteChange(reasonValue: reasonValue)
+            }
+        }
+        #endif
+    }
+
+    #if canImport(UIKit)
+    private func handleRouteChange(reasonValue: UInt) {
+        guard let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue),
+              reason == .oldDeviceUnavailable, isPlaying else { return }
+        pause()
+    }
+    #endif
 
     /// Mirrors `AVPlayer.timeControlStatus` into `isLoadingTrack` — `.waitingToPlayAtSpecifiedRate`
     /// is exactly AVFoundation's own "buffering, not actually producing sound yet" state, so this
