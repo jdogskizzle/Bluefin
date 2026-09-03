@@ -60,6 +60,14 @@ struct LyricsView: View {
                             .padding(.horizontal, 24)
                             .padding(.vertical, 40)
                         }
+                        .onAppear {
+                            // Jumps straight there, no animation — this is landing on where playback
+                            // already is when the sheet opens, not tracking a live change, so an
+                            // animated scroll-up-from-the-top would just be a distracting swoop for a
+                            // song that's already well underway.
+                            guard let currentLineIndex else { return }
+                            proxy.scrollTo(currentLineIndex, anchor: .center)
+                        }
                         .onChange(of: currentLineIndex) { _, newValue in
                             guard let newValue else { return }
                             if suppressAutoScroll {
