@@ -33,6 +33,12 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     @Published private(set) var currentIndex: Int = 0 { didSet { persistPlaybackState() } }
     @Published private(set) var isPlaying: Bool = false
     @Published private(set) var currentTime: TimeInterval = 0
+    /// True from the moment a track is asked to play until audio is actually flowing — covers both
+    /// the initial network fetch (`loadCurrentItem` sets this directly) and any later rebuffering
+    /// stall (mirrored from `AVPlayer.timeControlStatus`, see `observePlaybackReadiness`). Drives a
+    /// loading animation in place of the scrubber in `NowPlayingView`, since there's no meaningful
+    /// percentage to show for a network fetch — just that something is happening.
+    @Published private(set) var isLoadingTrack: Bool = false
     /// How many of the entries immediately after `currentIndex` were manually queued via "Add to
     /// Queue" — always the contiguous run `[currentIndex+1, currentIndex+1+subqueueCount)`. That
     /// invariant is what makes a plain count sufficient instead of tracking membership per item:
@@ -68,6 +74,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
+    private var timeControlStatusObservation: NSKeyValueObservation?
 
     /// The Jellyfin play session currently being reported, if any — `nil` until playback actually
     /// starts for the loaded item (e.g. a paused, app-launch-restored track has none yet), and
@@ -91,7 +98,29 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         configureRemoteCommandCenter()
         addPeriodicTimeObserver()
         observeAppBackgrounding()
+        observePlaybackReadiness()
         restorePlaybackState()
+    }
+
+    /// Mirrors `AVPlayer.timeControlStatus` into `isLoadingTrack` — `.waitingToPlayAtSpecifiedRate`
+    /// is exactly AVFoundation's own "buffering, not actually producing sound yet" state, so this
+    /// catches any rebuffering stall, not just the initial load `loadCurrentItem` already flags.
+    private func observePlaybackReadiness() {
+        timeControlStatusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+            let status = player.timeControlStatus
+            Task { @MainActor [weak self] in
+                switch status {
+                case .playing:
+                    self?.isLoadingTrack = false
+                case .waitingToPlayAtSpecifiedRate:
+                    self?.isLoadingTrack = true
+                case .paused:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
     }
 
     /// Backgrounding is the reliable "the user is done with the app for now" signal — a force-quit
@@ -225,6 +254,10 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     func pause() {
         player.pause()
         isPlaying = false
+        // A deliberate pause should hide the loading animation immediately, rather than waiting on
+        // `observePlaybackReadiness` — the user asked playback to stop, so it reads as done, not
+        // still loading, even if the fetch technically hasn't finished.
+        isLoadingTrack = false
         updateNowPlayingPlaybackState()
         persistPlaybackState()
         reportProgress(isPaused: true)
@@ -276,9 +309,13 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         removeEndObserver()
         currentTime = resumeAt ?? 0
         updateNowPlayingInfo()
+        isLoadingTrack = autoplay
 
         Task {
-            guard let url = await playbackURL(for: item) else { return }
+            guard let url = await playbackURL(for: item) else {
+                if item.Id == self.currentItem?.Id { self.isLoadingTrack = false }
+                return
+            }
             // The user may have skipped again while this awaited — don't clobber newer state.
             guard item.Id == self.currentItem?.Id else { return }
 

@@ -200,13 +200,18 @@ struct NowPlayingView: View {
     private func scrubber(for item: BaseItemDto) -> some View {
         let duration = Double(item.RunTimeTicks ?? 0) / 10_000_000
         return VStack(spacing: 4) {
-            Slider(
-                value: Binding(
-                    get: { player.currentTime },
-                    set: { player.seek(to: $0) }
-                ),
-                in: 0...max(duration, 1)
-            )
+            if player.isLoadingTrack {
+                LoadingScrubberBar()
+                    .frame(height: 20)
+            } else {
+                Slider(
+                    value: Binding(
+                        get: { player.currentTime },
+                        set: { player.seek(to: $0) }
+                    ),
+                    in: 0...max(duration, 1)
+                )
+            }
             HStack {
                 Text(formatted(player.currentTime))
                 Spacer()
@@ -281,5 +286,39 @@ struct NowPlayingView: View {
     private func formatted(_ seconds: TimeInterval) -> String {
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Shown in place of the scrubber while `AudioPlayerManager.isLoadingTrack` is true — deliberately
+/// not a real progress bar, since there's no meaningful percentage to show for a network fetch, just
+/// a small segment sliding back and forth to read as "something is happening."
+private struct LoadingScrubberBar: View {
+    @State private var isAtTrailingEdge = false
+
+    private let barHeight: CGFloat = 4
+    private let indicatorWidthFraction: CGFloat = 0.28
+
+    var body: some View {
+        GeometryReader { geometry in
+            let indicatorWidth = geometry.size.width * indicatorWidthFraction
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.2))
+                Capsule()
+                    .fill(Color.secondary)
+                    .frame(width: indicatorWidth)
+                    // `autoreverses: false` on a repeating implicit animation snaps straight back to
+                    // the start each cycle instead of reversing — that's what gives the continuous
+                    // one-direction "wrap" look rather than a back-and-forth bounce.
+                    .offset(x: isAtTrailingEdge ? geometry.size.width : -indicatorWidth)
+            }
+            .clipShape(Capsule())
+        }
+        .frame(height: barHeight)
+        .onAppear {
+            withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
+                isAtTrailingEdge = true
+            }
+        }
     }
 }
