@@ -19,6 +19,32 @@ struct AlbumDetailView: View {
         _viewModel = StateObject(wrappedValue: LibraryListViewModel(cacheKey: "albumSongs:\(album.Id)"))
     }
 
+    private struct DiscGroup: Identifiable {
+        let discNumber: Int
+        var songs: [(flatIndex: Int, song: BaseItemDto)] = []
+        var id: Int { discNumber }
+    }
+
+    /// Consecutive runs of `viewModel.items` grouped by disc — songs are already sorted disc-then-
+    /// track by the library sync, so this is just splitting on where the disc number changes. Each
+    /// entry keeps its `flatIndex` in the underlying (ungrouped) list, since that's what
+    /// `AudioPlayerManager.play(queue:startAt:)` needs — the play queue itself stays one flat list.
+    private var discGroups: [DiscGroup] {
+        var result: [DiscGroup] = []
+        for (flatIndex, song) in viewModel.items.enumerated() {
+            if let lastIndex = result.indices.last, result[lastIndex].discNumber == song.discNumber {
+                result[lastIndex].songs.append((flatIndex, song))
+            } else {
+                result.append(DiscGroup(discNumber: song.discNumber, songs: [(flatIndex, song)]))
+            }
+        }
+        return result
+    }
+
+    private var hasMultipleDiscs: Bool {
+        discGroups.count > 1
+    }
+
     var body: some View {
         Group {
             if !viewModel.hasSynced {
@@ -32,14 +58,23 @@ struct AlbumDetailView: View {
                     }
 
                     Section {
-                        ForEach(Array(viewModel.items.enumerated()), id: \.element.id) { index, song in
-                            Button {
-                                AudioPlayerManager.shared.play(queue: viewModel.items, startAt: index)
-                            } label: {
-                                NumberedSongRow(song: song, position: index + 1)
+                        ForEach(discGroups) { group in
+                            if hasMultipleDiscs {
+                                Text("Disc \(group.discNumber)")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .listRowSeparator(.hidden)
                             }
-                            .buttonStyle(.plain)
-                            .songActions(for: song, isAlbumContext: true)
+                            ForEach(Array(group.songs.enumerated()), id: \.element.song.id) { discPosition, entry in
+                                Button {
+                                    AudioPlayerManager.shared.play(queue: viewModel.items, startAt: entry.flatIndex)
+                                } label: {
+                                    NumberedSongRow(song: entry.song, position: discPosition + 1)
+                                }
+                                .buttonStyle(.plain)
+                                .songActions(for: entry.song, isAlbumContext: true)
+                            }
                         }
                     }
 

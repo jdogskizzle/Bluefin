@@ -24,6 +24,9 @@ struct BaseItemDto: Codable, Identifiable, Hashable {
     let ProductionYear: Int?
     let RunTimeTicks: Int64?
     let IndexNumber: Int?
+    /// A song's disc number within a multi-disc album ("Disc 2, Track 5"). Missing/absent should be
+    /// treated the same as disc 1 — see `discNumber` below for the normalized value.
+    let ParentIndexNumber: Int?
     let ChildCount: Int?
     let ImageTags: [String: String]?
     /// Only present when fetched as part of a playlist's items — identifies this specific entry
@@ -51,7 +54,7 @@ struct BaseItemDto: Codable, Identifiable, Hashable {
     var id: String { Id }
 
     enum CodingKeys: String, CodingKey {
-        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ChildCount, ImageTags, PlaylistItemId, PremiereDate, DateCreated, MediaSources, UserData, Genres
+        case Id, Name, CollectionType, AlbumArtist, Artists, Album, AlbumId, ProductionYear, RunTimeTicks, IndexNumber, ParentIndexNumber, ChildCount, ImageTags, PlaylistItemId, PremiereDate, DateCreated, MediaSources, UserData, Genres
         case ItemType = "Type"
     }
 }
@@ -123,6 +126,12 @@ extension BaseItemDto {
         return Self.premiereDateFormatter.date(from: DateCreated)
     }
 
+    /// `ParentIndexNumber`, normalized so a missing value (single-disc albums commonly don't set it)
+    /// still reads as disc 1 rather than needing every call site to handle the `nil` case itself.
+    var discNumber: Int {
+        max(ParentIndexNumber ?? 1, 1)
+    }
+
     /// The first audio stream of the first media source — a song has exactly one of each in
     /// practice, so there's no need to pick among multiple.
     var primaryAudioStream: MediaStreamInfo? {
@@ -137,6 +146,7 @@ extension BaseItemDto {
             Id: Id, Name: Name, ItemType: ItemType, CollectionType: CollectionType,
             AlbumArtist: AlbumArtist, Artists: Artists, Album: Album, AlbumId: AlbumId,
             ProductionYear: ProductionYear, RunTimeTicks: RunTimeTicks, IndexNumber: IndexNumber,
+            ParentIndexNumber: ParentIndexNumber,
             ChildCount: newChildCount, ImageTags: ImageTags, PlaylistItemId: PlaylistItemId,
             PremiereDate: PremiereDate, DateCreated: DateCreated, MediaSources: MediaSources, UserData: UserData,
             Genres: Genres
@@ -150,6 +160,7 @@ extension BaseItemDto {
             Id: Id, Name: newName, ItemType: ItemType, CollectionType: CollectionType,
             AlbumArtist: AlbumArtist, Artists: Artists, Album: Album, AlbumId: AlbumId,
             ProductionYear: ProductionYear, RunTimeTicks: RunTimeTicks, IndexNumber: IndexNumber,
+            ParentIndexNumber: ParentIndexNumber,
             ChildCount: ChildCount, ImageTags: ImageTags, PlaylistItemId: PlaylistItemId,
             PremiereDate: PremiereDate, DateCreated: DateCreated, MediaSources: MediaSources, UserData: UserData,
             Genres: Genres

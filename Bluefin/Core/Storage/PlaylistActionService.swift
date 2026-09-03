@@ -83,7 +83,7 @@ enum PlaylistActionService {
             let playlist = BaseItemDto(
                 Id: id, Name: trimmed, ItemType: "Playlist", CollectionType: nil,
                 AlbumArtist: nil, Artists: nil, Album: nil, AlbumId: nil,
-                ProductionYear: nil, RunTimeTicks: nil, IndexNumber: nil,
+                ProductionYear: nil, RunTimeTicks: nil, IndexNumber: nil, ParentIndexNumber: nil,
                 ChildCount: 0, ImageTags: nil, PlaylistItemId: nil,
                 PremiereDate: nil, DateCreated: nil, MediaSources: nil, UserData: nil, Genres: nil
             )

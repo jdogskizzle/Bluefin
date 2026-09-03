@@ -106,7 +106,12 @@ final class LibrarySyncManager: ObservableObject {
 
             let songsByAlbum = Dictionary(grouping: songs) { $0.AlbumId ?? "" }
             for (albumId, albumSongs) in songsByAlbum where !albumId.isEmpty {
-                let sorted = albumSongs.sorted { ($0.IndexNumber ?? 0) < ($1.IndexNumber ?? 0) }
+                // Disc first, then track — without this, a multi-disc album's tracks interleave by
+                // track number alone (disc 2's track 1 sorting ahead of disc 1's track 2).
+                let sorted = albumSongs.sorted { lhs, rhs in
+                    guard lhs.discNumber == rhs.discNumber else { return lhs.discNumber < rhs.discNumber }
+                    return (lhs.IndexNumber ?? 0) < (rhs.IndexNumber ?? 0)
+                }
                 await LibraryCache.shared.store(sorted, for: "albumSongs:\(albumId)")
             }
 
