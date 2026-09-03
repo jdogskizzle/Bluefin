@@ -59,6 +59,14 @@ struct LibrarySyncView: View {
             }
         }
         .interactiveDismissDisabled(manager.isSyncing)
+        .onChange(of: manager.phase) { _, newPhase in
+            // Only on success — a failure needs to stay on screen for the user to actually read it.
+            guard newPhase == .finished else { return }
+            Task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                dismiss()
+            }
+        }
     }
 
     @ViewBuilder
