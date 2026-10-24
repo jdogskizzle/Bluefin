@@ -75,6 +75,17 @@ class JellyfinAPIClient: ObservableObject {
         }
         return authHeader
     }
+
+    /// Sets the client-identification header both ways: `X-Emby-Authorization` (the legacy name,
+    /// still required by older servers) and the standard `Authorization` header — newer Jellyfin
+    /// versions (confirmed against a server reporting itself as 12.2.0) 400 a request that only
+    /// carries the legacy header, even though its value is identical either way. Sending both covers
+    /// every server without needing to detect which one it is first.
+    private func applyAuthorizationHeader(to request: inout URLRequest) {
+        let header = getAuthorizationHeader()
+        request.setValue(header, forHTTPHeaderField: "X-Emby-Authorization")
+        request.setValue(header, forHTTPHeaderField: "Authorization")
+    }
     
     func saveCredentials(serverURL: URL, accessToken: String, userId: String) {
         self.serverURL = serverURL
@@ -132,7 +143,7 @@ class JellyfinAPIClient: ObservableObject {
         let testURL = url.appendingPathComponent("System/Info/Public")
         var request = URLRequest(url: testURL)
         request.httpMethod = "GET"
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
         request.timeoutInterval = 10
         
         do {
@@ -170,7 +181,7 @@ class JellyfinAPIClient: ObservableObject {
         var request = URLRequest(url: authURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
         
         let body: [String: String] = [
             "Username": username,
@@ -228,7 +239,7 @@ class JellyfinAPIClient: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -338,7 +349,7 @@ class JellyfinAPIClient: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
         request.timeoutInterval = 10
 
         let (_, response) = try await URLSession.shared.data(for: request)
@@ -372,7 +383,7 @@ class JellyfinAPIClient: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
         request.timeoutInterval = 10
 
         let (_, response) = try await URLSession.shared.data(for: request)
@@ -393,7 +404,7 @@ class JellyfinAPIClient: ObservableObject {
     private func performRequest(_ url: URL, method: String, body: Data? = nil, contentType: String? = nil) async throws {
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
         request.timeoutInterval = 10
         if let contentType {
             request.setValue(contentType, forHTTPHeaderField: "Content-Type")
@@ -425,7 +436,7 @@ class JellyfinAPIClient: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
         request.httpBody = body
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -496,7 +507,7 @@ class JellyfinAPIClient: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = isFavorite ? "POST" : "DELETE"
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
         request.timeoutInterval = 10
 
         let (_, response) = try await URLSession.shared.data(for: request)
@@ -521,7 +532,7 @@ class JellyfinAPIClient: ObservableObject {
         var request = URLRequest(url: serverURL.appendingPathComponent(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(getAuthorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        applyAuthorizationHeader(to: &request)
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         // Reporting is best-effort — a dropped report shouldn't interrupt playback, so failures
         // (including a session that's expired) are silently swallowed rather than surfaced.

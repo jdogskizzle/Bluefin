@@ -2,6 +2,9 @@ PROJECT = Bluefin.xcodeproj
 SCHEME = Bluefin
 DESTINATION = platform=iOS Simulator,name=iPhone 17 Pro
 BUNDLE_ID = com.jdogskizzle.Bluefin
+# The project overrides PRODUCT_BUNDLE_IDENTIFIER specifically for sdk=iphoneos — a real device
+# install lands under this id, not BUNDLE_ID above (that one's only correct for the simulator SDK).
+DEVICE_BUNDLE_ID = com.jdogskizzle.app.bluefin
 BUILD_DIR = build
 
 .PHONY: build deploy test clean
@@ -55,7 +58,7 @@ deploy-device:
 		$(BUILD_DIR)/Build/Products/Debug-iphoneos/Bluefin.app && \
 	xcrun devicectl device process launch \
 		--device "$$DEVICE_ID" \
-		$(BUNDLE_ID)
+		$(DEVICE_BUNDLE_ID)
 
 deploy-debug:
 	@DEVICE_ID=$$(xcrun simctl list devices booted | \
@@ -113,7 +116,7 @@ deploy-device-debug:
 		$(BUILD_DIR)/Build/Products/Debug-iphoneos/Bluefin.app && \
 	xcrun devicectl device process launch \
 		--device "$$DEVICE_ID" \
-		$(BUNDLE_ID) && \
+		$(DEVICE_BUNDLE_ID) && \
 	echo "Streaming Bluefin logs..." && \
 	log stream \
 		--level debug \

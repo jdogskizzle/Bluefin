@@ -92,6 +92,14 @@ struct LibraryListView: View {
         .task {
             await viewModel.load()
         }
+        .task {
+            // A lightweight, read-only refresh every time this screen appears — distinct from the
+            // user-triggered full library sync — so a playlist created/deleted/renamed from another
+            // client shows up here without waiting on that sync.
+            if itemType == .playlist {
+                await PlaylistRefreshService.refreshPlaylists()
+            }
+        }
     }
 
     @ViewBuilder

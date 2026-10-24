@@ -71,6 +71,14 @@ struct HomeView: View {
         .task(id: pinnedStore.pinnedPlaylistId) {
             await loadPinnedPlaylist()
         }
+        .task(id: pinnedStore.pinnedPlaylistId) {
+            // Home shows the pinned playlist without the user ever opening Library, so it needs its
+            // own refresh-on-appear rather than relying on that screen's — otherwise a pinned
+            // playlist edited from another client would look stale here until the next full sync.
+            guard let id = pinnedStore.pinnedPlaylistId else { return }
+            await PlaylistRefreshService.refreshPlaylists()
+            await PlaylistRefreshService.refreshSongs(forPlaylistId: id)
+        }
         .task(id: lidarrClient.isConnected) {
             await releaseCache.refresh()
         }

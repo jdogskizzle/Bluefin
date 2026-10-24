@@ -159,6 +159,11 @@ struct PlaylistDetailView: View {
         .task {
             await loadAlbumReleaseDates()
         }
+        .task {
+            // Same lightweight refresh-on-appear as the playlists list itself — picks up songs
+            // added/removed/reordered from another client without waiting on a full library sync.
+            await PlaylistRefreshService.refreshSongs(forPlaylistId: playlist.Id)
+        }
         .alert("Rename Playlist", isPresented: $showRenameAlert) {
             TextField("Name", text: $renameText)
             Button("Cancel", role: .cancel) {}
