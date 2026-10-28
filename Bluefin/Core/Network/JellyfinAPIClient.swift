@@ -307,6 +307,23 @@ class JellyfinAPIClient: ObservableObject {
         return response.Items
     }
 
+    /// `Items?IncludeItemTypes=MusicArtist` returns every `MusicArtist` entity Jellyfin has created —
+    /// which includes a separate entry for every featured/guest performer credited on any track, not
+    /// just the artists whose own albums appear in the library. This dedicated endpoint returns only
+    /// the latter (same reasoning as `fetchGenres` below, a different Jellyfin item type that isn't
+    /// reachable through the generic `Items` query the normal way).
+    func fetchAlbumArtists(parentId: String) async throws -> [BaseItemDto] {
+        guard let userId else { throw JellyfinError.invalidResponse }
+        let response: ItemsResponse = try await performGet(
+            path: "Artists/AlbumArtists",
+            queryItems: [
+                URLQueryItem(name: "userId", value: userId),
+                URLQueryItem(name: "ParentId", value: parentId)
+            ]
+        )
+        return response.Items
+    }
+
     /// Genres aren't real library items, so they don't come back from `Users/{userId}/Items` even
     /// with `IncludeItemTypes=MusicGenre` — Jellyfin exposes them only through this dedicated
     /// endpoint instead.
