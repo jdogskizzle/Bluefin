@@ -6,91 +6,34 @@
 //
 
 import AVFoundation
-import Foundation
 
-/// Runs the actual per-sample EQ processing. Lives off the main actor on purpose: `process(...)` is
-/// called from the `MTAudioProcessingTap`'s real-time audio thread (see `EqualizerAudioMixFactory`),
-/// which can't hop to the main actor without risking an audible glitch, so every access here goes
-/// through a plain lock instead of Combine/`@Published`. `EqualizerSettings` (main-actor, UI-facing)
-/// pushes its state into this engine via `updateSettings` whenever it changes.
-nonisolated final class EqualizerEngine: @unchecked Sendable {
+/// Thin bridge between `EqualizerSettings` (persisted UI state) and the actual `AVAudioUnitEQ` node
+/// living permanently in `AudioPlayerManager`'s engine graph. A native Core Audio unit, wired into
+/// the graph once for the app's lifetime rather than attached/detached per track — unlike the custom
+/// `MTAudioProcessingTap`-based DSP this replaced, there's nothing here that needs tearing down or
+/// rebuilding at a track boundary, which is exactly what stood between this player and gapless
+/// playback before. Adjusting a running `AVAudioUnitEQ`'s bands is also safe to do live, with no
+/// locking needed the way the old hand-rolled biquad filters required.
+@MainActor
+final class EqualizerEngine {
     static let shared = EqualizerEngine()
 
-    private let lock = NSLock()
-    private var isEnabled = false
-    private var gains = EqualizerBands.flatGains
-    private var sampleRate: Double = 44100
-    private var channelFilters: [[BiquadFilter]] = []
+    let node = AVAudioUnitEQ(numberOfBands: EqualizerBands.count)
 
-    private init() {}
-
-    nonisolated func updateSettings(isEnabled: Bool, gains: [Double]) {
-        lock.lock()
-        defer { lock.unlock() }
-        self.isEnabled = isEnabled
-        self.gains = gains
-        rebuildFilters()
-    }
-
-    nonisolated func prepare(sampleRate: Double, channelCount: Int) {
-        lock.lock()
-        defer { lock.unlock() }
-        self.sampleRate = sampleRate
-        channelFilters = (0..<max(channelCount, 1)).map { _ in makeBandFilters() }
-    }
-
-    /// Reconfigures each existing filter's coefficients in place rather than replacing them —
-    /// replacing would reset their delay-line state, producing an audible click on every slider
-    /// drag tick instead of a smooth gain change.
-    private func rebuildFilters() {
-        for channel in channelFilters.indices {
-            for band in channelFilters[channel].indices {
-                channelFilters[channel][band].configure(frequency: EqualizerBands.frequencies[band], gainDB: gains[band], sampleRate: sampleRate)
-            }
+    private init() {
+        for (index, frequency) in EqualizerBands.frequencies.enumerated() {
+            let band = node.bands[index]
+            band.filterType = .parametric
+            band.frequency = Float(frequency)
+            band.bandwidth = 1.0
+            band.bypass = false
         }
     }
 
-    private func makeBandFilters() -> [BiquadFilter] {
-        EqualizerBands.frequencies.enumerated().map { index, frequency in
-            BiquadFilter(frequency: frequency, gainDB: gains[index], sampleRate: sampleRate)
-        }
-    }
-
-    nonisolated func process(bufferList: UnsafeMutableAudioBufferListPointer, frameCount: Int, interleaved: Bool) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard isEnabled, !channelFilters.isEmpty else { return }
-
-        if interleaved {
-            guard let buffer = bufferList.first, let data = buffer.mData else { return }
-            let channelCount = Int(buffer.mNumberChannels)
-            let samples = data.assumingMemoryBound(to: Float.self)
-            for frame in 0..<frameCount {
-                for channel in 0..<channelCount where channel < channelFilters.count {
-                    let index = frame * channelCount + channel
-                    var bandFilters = channelFilters[channel]
-                    var sample = samples[index]
-                    for band in bandFilters.indices {
-                        sample = bandFilters[band].process(sample)
-                    }
-                    samples[index] = sample
-                    channelFilters[channel] = bandFilters
-                }
-            }
-        } else {
-            for (channelIndex, buffer) in bufferList.enumerated() where channelIndex < channelFilters.count {
-                guard let data = buffer.mData else { continue }
-                let samples = data.assumingMemoryBound(to: Float.self)
-                var bandFilters = channelFilters[channelIndex]
-                for frame in 0..<frameCount {
-                    var sample = samples[frame]
-                    for band in bandFilters.indices {
-                        sample = bandFilters[band].process(sample)
-                    }
-                    samples[frame] = sample
-                }
-                channelFilters[channelIndex] = bandFilters
-            }
+    func updateSettings(isEnabled: Bool, gains: [Double]) {
+        node.bypass = !isEnabled
+        for (index, gain) in gains.enumerated() where index < node.bands.count {
+            node.bands[index].gain = Float(gain)
         }
     }
 }

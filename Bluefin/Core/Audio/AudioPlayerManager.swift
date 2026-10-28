@@ -33,10 +33,9 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     @Published private(set) var currentIndex: Int = 0 { didSet { persistPlaybackState() } }
     @Published private(set) var isPlaying: Bool = false
     @Published private(set) var currentTime: TimeInterval = 0
-    /// True from the moment a track is asked to play until audio is actually flowing — covers both
-    /// the initial network fetch (`loadCurrentItem` sets this directly) and any later rebuffering
-    /// stall (mirrored from `AVPlayer.timeControlStatus`, see `observePlaybackReadiness`). Drives a
-    /// loading animation in place of the scrubber in `NowPlayingView`, since there's no meaningful
+    /// True from the moment a track is asked to play until audio is actually flowing — covers the
+    /// network fetch (ensuring a local file exists) and local decode setup. Drives a loading
+    /// animation in place of the scrubber in `NowPlayingView`, since there's no meaningful
     /// percentage to show for a network fetch — just that something is happening.
     @Published private(set) var isLoadingTrack: Bool = false
     /// How many of the entries immediately after `currentIndex` were manually queued via "Add to
@@ -70,12 +69,143 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         return queue.remove(at: index)
     }
 
-    private let player = AVPlayer()
-    private var timeObserverToken: Any?
-    private var endObserver: NSObjectProtocol?
+    // MARK: - Playback engine
+    //
+    // Gapless playback between consecutive songs is only guaranteed by actually feeding one
+    // continuous stream of PCM samples to the audio hardware, with nothing in between — not by
+    // asking a higher-level player (`AVPlayer`/`AVQueuePlayer`) to switch its "current item" at the
+    // boundary, even with the next item fully pre-buffered. That switch always involves tearing
+    // down one compressed-audio decode session and starting another, which is not specified (and in
+    // practice isn't reliable here) to be sample-accurate. `AVAudioEngine` + `AVAudioPlayerNode`
+    // sidesteps this entirely: every track, regardless of its source format, is decoded to PCM and
+    // scheduled onto the *same* node back-to-back, so a track boundary is nothing more than "which
+    // chunk of samples this happens to be" from the node's perspective — there is no hand-off to get
+    // wrong. This also removes the equalizer's old per-item `MTAudioProcessingTap`/`AVAudioMix`
+    // (which needed rebuilding at every item boundary) in favor of a single `AVAudioUnitEQ` node
+    // permanently wired into the graph (see `EqualizerEngine`).
+    private let engine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
+    private let canonicalFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)!
+    /// Each chunk's `.dataConsumed` completion hops back through a `Task` to the main actor before
+    /// the next chunk gets scheduled — if that hop is ever delayed (SwiftUI work, the time-update
+    /// timer, anything else on the main actor), the node can run dry for a moment with nothing queued
+    /// behind the chunk that just finished, which is audible as a click right at the chunk boundary.
+    /// Keeping this many chunks scheduled ahead at all times (see `beginScheduling`) gives that hop
+    /// slack to be late without the node ever actually running out of audio.
+    private let chunkDurationSeconds: Double = 4.0
+    private let targetBufferedChunks = 3
+
+    /// Opaque identity for "one track's decode/schedule chain" — deliberately not a queue index,
+    /// since `removeFromQueue`/reorders can shift indices out from under an in-flight chain. Bumped
+    /// for every new chain, whether started by `startPlayback` or by `prepareNextTrack`'s hand-off.
+    private var nextDecodeSessionId = 0
+    /// The session whose audio is the one actually mapped to `currentIndex` right now.
+    private var activeDecodeSession = 0
+    /// Bumped on every *discontinuous* restart (manual skip/seek/jump/queue-replace) — every
+    /// in-flight async step and scheduled-buffer completion closure checks this before touching
+    /// state, so stale work from a superseded chain can't corrupt the new one.
+    private var decodeGeneration = 0
+
+    /// The next track's feeder/session/item, once `prepareNextTrack` has it ready and its first
+    /// chunk is already scheduled onto `playerNode` — `handleTrackFinishedRendering` just needs to
+    /// flip `activeDecodeSession` to match what the engine already gaplessly moved on to. `nil` until
+    /// ready, and also whenever nothing is prepared (e.g. still mid-download).
+    private var pendingNextSession: Int?
+    private var pendingNextItem: BaseItemDto?
+
+    /// Node-timeline frame offset at which each session's audio started — the engine's own sample
+    /// clock runs continuously across every track played in one session, so this is what turns that
+    /// into a track-relative "current time." Removed once a session finishes.
+    private var trackStartFrames: [Int: AVAudioFramePosition] = [:]
+    /// How far into a track's own content, in frames, a session's audio actually started — nonzero
+    /// only when that session began via a seek (`startPlayback`'s `resumeAt`). `trackStartFrames`
+    /// alone can't capture this: after a seek the node's clock is reset to 0 by `playerNode.stop()`,
+    /// so without this offset `refreshCurrentTime` would compute time-since-restart instead of the
+    /// actual seeked-to position, snapping the displayed/reported time back toward 0 right after
+    /// every seek.
+    private var sessionStartOffsetFrames: [Int: AVAudioFramePosition] = [:]
+    private var framesScheduledSoFar: AVAudioFramePosition = 0
+    private var timeUpdateTimer: Timer?
+
+    /// Streams one track's audio a few seconds at a time via `AVAudioFile` (so a multi-minute song
+    /// doesn't need to be decoded into memory up front), converting to the engine's canonical format
+    /// on the way out since a mixed-format library (different sample rates/channel counts between
+    /// tracks) can't otherwise be scheduled onto the same player node.
+    private final class TrackFeeder {
+        private let audioFile: AVAudioFile
+        private let converter: AVAudioConverter?
+        private let outputFormat: AVAudioFormat
+        private(set) var isExhausted = false
+
+        init(fileURL: URL, outputFormat: AVAudioFormat, seekSeconds: TimeInterval = 0) throws {
+            let file = try AVAudioFile(forReading: fileURL)
+            self.audioFile = file
+            self.outputFormat = outputFormat
+            if seekSeconds > 0 {
+                let frame = AVAudioFramePosition(seekSeconds * file.processingFormat.sampleRate)
+                file.framePosition = max(0, min(frame, file.length))
+            }
+            let source = file.processingFormat
+            if source.sampleRate == outputFormat.sampleRate, source.channelCount == outputFormat.channelCount {
+                converter = nil
+            } else {
+                guard let converter = AVAudioConverter(from: source, to: outputFormat) else {
+                    throw NSError(domain: "Bluefin.TrackFeeder", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unsupported audio format for \(fileURL.lastPathComponent)"])
+                }
+                self.converter = converter
+            }
+        }
+
+        /// Reads roughly `approximateSeconds` of source audio, converted to `outputFormat` — `nil`
+        /// once nothing more can be read. Sets `isExhausted` on the same call that returns the final
+        /// partial chunk, so the caller never needs an extra round-trip just to discover a track has
+        /// ended.
+        func readChunk(approximateSeconds: Double) -> AVAudioPCMBuffer? {
+            guard !isExhausted else { return nil }
+            let sourceFormat = audioFile.processingFormat
+            let framesToRead = AVAudioFrameCount(max(1, sourceFormat.sampleRate * approximateSeconds))
+            guard let sourceBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: framesToRead) else {
+                isExhausted = true
+                return nil
+            }
+            do {
+                try audioFile.read(into: sourceBuffer, frameCount: framesToRead)
+            } catch {
+                isExhausted = true
+                return nil
+            }
+            if sourceBuffer.frameLength < framesToRead {
+                isExhausted = true
+            }
+            guard sourceBuffer.frameLength > 0 else { return nil }
+            guard let converter else { return sourceBuffer }
+
+            let ratio = outputFormat.sampleRate / sourceFormat.sampleRate
+            let capacity = AVAudioFrameCount(Double(sourceBuffer.frameLength) * ratio) + 8
+            guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
+                return sourceBuffer
+            }
+
+            var hasServedInput = false
+            var conversionError: NSError?
+            converter.convert(to: convertedBuffer, error: &conversionError) { _, inputStatus in
+                if hasServedInput {
+                    inputStatus.pointee = .noDataNow
+                    return nil
+                }
+                hasServedInput = true
+                inputStatus.pointee = .haveData
+                return sourceBuffer
+            }
+            return conversionError == nil ? convertedBuffer : nil
+        }
+    }
+
     private var backgroundObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
-    private var timeControlStatusObservation: NSKeyValueObservation?
+    private var interruptionObserver: NSObjectProtocol?
+    private var engineConfigChangeObserver: NSObjectProtocol?
+    private var wasPlayingBeforeInterruption = false
 
     /// The Jellyfin play session currently being reported, if any — `nil` until playback actually
     /// starts for the loaded item (e.g. a paused, app-launch-restored track has none yet), and
@@ -96,12 +226,51 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     private override init() {
         super.init()
         configureAudioSession()
+        buildEngineGraph()
         configureRemoteCommandCenter()
-        addPeriodicTimeObserver()
+        startTimeUpdates()
         observeAppBackgrounding()
-        observePlaybackReadiness()
         observeRouteChanges()
+        observeInterruptions()
         restorePlaybackState()
+    }
+
+    /// Wires `playerNode -> EqualizerEngine's AVAudioUnitEQ -> mainMixer` once, for the lifetime of
+    /// the app — nothing here is ever torn down or rebuilt per track, which is exactly what made the
+    /// old per-item `MTAudioProcessingTap` approach (and before that, the item-switch itself) a
+    /// source of audible hiccups at track boundaries.
+    private func buildEngineGraph() {
+        let eqNode = EqualizerEngine.shared.node
+        engine.attach(playerNode)
+        engine.attach(eqNode)
+        engine.connect(playerNode, to: eqNode, format: canonicalFormat)
+        engine.connect(eqNode, to: engine.mainMixerNode, format: canonicalFormat)
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            print("Failed to start audio engine: \(error)")
+        }
+    }
+
+    private func startTimeUpdates() {
+        timeUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshCurrentTime()
+            }
+        }
+    }
+
+    private func refreshCurrentTime() {
+        guard let nodeTime = playerNode.lastRenderTime,
+              let playerTime = playerNode.playerTime(forNodeTime: nodeTime),
+              let startFrame = trackStartFrames[activeDecodeSession] else { return }
+        let elapsedFrames = playerTime.sampleTime - startFrame
+        currentTime = max(0, Double(elapsedFrames) / canonicalFormat.sampleRate)
+        if isPlaying, currentTime - lastProgressReportTime >= progressReportInterval {
+            lastProgressReportTime = currentTime
+            reportProgress(isPaused: false)
+        }
     }
 
     /// Headphones/Bluetooth disconnecting mid-playback already makes iOS stop routing audio out loud
@@ -131,26 +300,57 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     }
     #endif
 
-    /// Mirrors `AVPlayer.timeControlStatus` into `isLoadingTrack` — `.waitingToPlayAtSpecifiedRate`
-    /// is exactly AVFoundation's own "buffering, not actually producing sound yet" state, so this
-    /// catches any rebuffering stall, not just the initial load `loadCurrentItem` already flags.
-    private func observePlaybackReadiness() {
-        timeControlStatusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-            let status = player.timeControlStatus
+    /// `AVPlayer` absorbed phone-call/Siri interruptions and audio-route hardware-format changes
+    /// invisibly; `AVAudioEngine` does not — an interruption stops the engine outright, and it has
+    /// to be explicitly restarted afterward, or playback silently never resumes.
+    private func observeInterruptions() {
+        #if canImport(UIKit)
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { notification in
             Task { @MainActor [weak self] in
-                switch status {
-                case .playing:
-                    self?.isLoadingTrack = false
-                case .waitingToPlayAtSpecifiedRate:
-                    self?.isLoadingTrack = true
-                case .paused:
-                    break
-                @unknown default:
-                    break
-                }
+                self?.handleInterruption(notification: notification)
             }
         }
+        engineConfigChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor [weak self] in
+                self?.handleEngineConfigurationChange()
+            }
+        }
+        #endif
     }
+
+    #if canImport(UIKit)
+    private func handleInterruption(notification: Notification) {
+        guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+        switch type {
+        case .began:
+            wasPlayingBeforeInterruption = isPlaying
+            if isPlaying { pause() }
+        case .ended:
+            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
+            if wasPlayingBeforeInterruption, shouldResume {
+                resume()
+            }
+            wasPlayingBeforeInterruption = false
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleEngineConfigurationChange() {
+        guard isPlaying, !engine.isRunning else { return }
+        try? engine.start()
+    }
+    #endif
 
     /// Backgrounding is the reliable "the user is done with the app for now" signal — a force-quit
     /// from the app switcher requires backgrounding first, so this reliably catches it. Queue/index/
@@ -196,7 +396,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         replaceQueue(state.queue)
         currentIndex = state.currentIndex
         subqueueCount = state.subqueueCount
-        loadCurrentItem(autoplay: false, resumeAt: state.currentTime)
+        startPlayback(atQueueIndex: state.currentIndex, autoplay: false, resumeAt: state.currentTime)
     }
 
     func play(queue newQueue: [BaseItemDto], startAt index: Int) {
@@ -204,7 +404,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         replaceQueue(newQueue)
         currentIndex = index
         subqueueCount = 0
-        loadCurrentItem(autoplay: true)
+        startPlayback(atQueueIndex: index, autoplay: true)
     }
 
     /// Jumps to a track already in the current queue, leaving the rest of the queue unchanged.
@@ -218,7 +418,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
             subqueueCount = index < oldSubqueueEnd ? max(0, oldSubqueueEnd - index - 1) : 0
         }
         currentIndex = index
-        loadCurrentItem(autoplay: true)
+        startPlayback(atQueueIndex: index, autoplay: true)
     }
 
     /// Inserts `song` right after the current song, or after the last existing "Add to Queue" item
@@ -266,6 +466,11 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     /// determine whether it counts as "in the subqueue" afterward, purely by whether it landed
     /// inside that range — moving into it adds it, moving out removes it, moving within it is a
     /// no-op.
+    ///
+    /// Note there's no explicit "re-prepare the next track" step here (or in the two mutators
+    /// above): `prepareNextTrack` below only ever runs right before it's actually needed and reads
+    /// `queue[currentIndex + 1]` fresh at that moment, so it naturally reflects whatever the queue
+    /// looks like by then rather than needing to be invalidated after every mutation.
     func applyQueueReorder(newQueue: [BaseItemDto], newEntryIDs: [UUID], movedEntryID: UUID, wasInSubqueue: Bool) {
         queue = newQueue
         queueEntryIDs = newEntryIDs
@@ -281,11 +486,11 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     }
 
     func pause() {
-        player.pause()
+        playerNode.pause()
         isPlaying = false
         // A deliberate pause should hide the loading animation immediately, rather than waiting on
-        // `observePlaybackReadiness` — the user asked playback to stop, so it reads as done, not
-        // still loading, even if the fetch technically hasn't finished.
+        // the load to finish — the user asked playback to stop, so it reads as done, not still
+        // loading, even if the fetch technically hasn't finished.
         isLoadingTrack = false
         updateNowPlayingPlaybackState()
         persistPlaybackState()
@@ -293,7 +498,10 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     }
 
     func resume() {
-        player.play()
+        if !engine.isRunning {
+            try? engine.start()
+        }
+        playerNode.play()
         isPlaying = true
         updateNowPlayingPlaybackState()
         startReportingSessionIfNeeded()
@@ -306,7 +514,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
             subqueueCount -= 1
         }
         currentIndex += 1
-        loadCurrentItem(autoplay: isPlaying)
+        startPlayback(atQueueIndex: currentIndex, autoplay: isPlaying)
     }
 
     func skipToPrevious() {
@@ -315,74 +523,228 @@ final class AudioPlayerManager: NSObject, ObservableObject {
             return
         }
         currentIndex -= 1
-        loadCurrentItem(autoplay: isPlaying)
+        startPlayback(atQueueIndex: currentIndex, autoplay: isPlaying)
     }
 
+    /// A manual seek is a discontinuous jump just like a skip — it restarts this track's decode
+    /// chain from the new offset rather than trying to splice the running one, so it goes through
+    /// the exact same `startPlayback` path.
     func seek(to time: TimeInterval) {
-        // A small tolerance lets AVPlayer land on the nearest convenient keyframe instead of doing a
-        // fully precise decode — lyric lines are seconds apart, so this is imperceptibly close while
-        // avoiding the audible restart gap a zero-tolerance seek introduces.
-        let tolerance = CMTime(seconds: 0.2, preferredTimescale: 1000)
-        player.seek(to: CMTime(seconds: time, preferredTimescale: 1000), toleranceBefore: tolerance, toleranceAfter: tolerance)
-        currentTime = time
-        updateNowPlayingElapsedTime()
-        reportProgress(isPaused: !isPlaying)
+        guard currentItem != nil else { return }
+        startPlayback(atQueueIndex: currentIndex, autoplay: isPlaying, resumeAt: time)
     }
 
-    private func loadCurrentItem(autoplay: Bool, resumeAt: TimeInterval? = nil) {
-        guard let item = currentItem else { return }
-        // Whatever was previously loaded (if its session ever actually started) is done as of this
-        // switch — reported here, before `currentTime` is reset below, so the stop position reflects
-        // where that item was actually left rather than the new item's starting position.
+    /// Starts (or restarts) playback at `index` from scratch: stops whatever the engine had queued,
+    /// invalidates any in-flight decode work via `decodeGeneration`, resolves a local file for the
+    /// item, and begins scheduling its PCM onto `playerNode`. Used for every *discontinuous* entry
+    /// point (initial play, skip, seek, jump-to-track, restoring a saved session) — the ordinary
+    /// track-to-track boundary never calls this; it's handled by `prepareNextTrack`'s gapless
+    /// hand-off instead.
+    private func startPlayback(atQueueIndex index: Int, autoplay: Bool, resumeAt: TimeInterval? = nil) {
+        guard queue.indices.contains(index) else { return }
+        let item = queue[index]
+
         stopReportingSession(finalPosition: currentTime)
-        removeEndObserver()
+        decodeGeneration += 1
+        let generation = decodeGeneration
+        nextDecodeSessionId += 1
+        let session = nextDecodeSessionId
+        activeDecodeSession = session
+        pendingNextSession = nil
+        pendingNextItem = nil
+        trackStartFrames.removeAll()
+        sessionStartOffsetFrames.removeAll()
+        framesScheduledSoFar = 0
+        playerNode.stop()
+
         currentTime = resumeAt ?? 0
         updateNowPlayingInfo()
         isLoadingTrack = autoplay
 
         Task {
-            guard let url = await playbackURL(for: item) else {
-                if item.Id == self.currentItem?.Id { self.isLoadingTrack = false }
+            guard let fileURL = await self.ensureLocalFile(for: item) else {
+                if index == self.currentIndex { self.isLoadingTrack = false }
                 return
             }
-            // The user may have skipped again while this awaited — don't clobber newer state.
-            guard item.Id == self.currentItem?.Id else { return }
+            guard generation == self.decodeGeneration else { return }
 
-            let asset = AVURLAsset(url: url)
-            let playerItem = AVPlayerItem(asset: asset)
-            playerItem.audioMix = await EqualizerAudioMixFactory.makeAudioMix(for: asset)
-            guard item.Id == self.currentItem?.Id else { return }
-            self.player.replaceCurrentItem(with: playerItem)
-            self.addEndObserver(for: playerItem)
-
-            if let resumeAt {
-                self.seek(to: resumeAt)
+            guard let feeder = try? TrackFeeder(fileURL: fileURL, outputFormat: self.canonicalFormat, seekSeconds: resumeAt ?? 0) else {
+                if index == self.currentIndex { self.isLoadingTrack = false }
+                return
             }
+            guard generation == self.decodeGeneration else { return }
 
+            self.sessionStartOffsetFrames[session] = AVAudioFramePosition((resumeAt ?? 0) * self.canonicalFormat.sampleRate)
+            self.beginScheduling(feeder: feeder, session: session, generation: generation)
+
+            if !self.engine.isRunning {
+                try? self.engine.start()
+            }
             if autoplay {
-                self.player.play()
+                self.playerNode.play()
                 self.isPlaying = true
                 self.startReportingSessionIfNeeded()
             }
+            self.isLoadingTrack = false
         }
 
         cacheUpcomingTrack()
     }
 
-    /// Local cached file if present, otherwise the remote stream URL — kicking off a background
-    /// download to cache it for next time. A real download (see `DownloadStore`) always wins over
-    /// the opportunistic cache when both exist — it's the copy the user explicitly asked to keep.
-    private func playbackURL(for item: BaseItemDto) async -> URL? {
+    /// Reads one chunk from `feeder` and schedules it onto `playerNode` with no explicit time —
+    /// which is exactly what makes this gapless: omitting a time schedules the buffer to play
+    /// immediately following whatever was previously scheduled on this node, true regardless of
+    /// which track that previous buffer belonged to. Each non-final chunk's completion handler
+    /// (`.dataConsumed`, fired roughly in step with real playback) pulls in the next chunk of the
+    /// *same* track; the final chunk instead waits for `.dataRendered` (fired once that audio has
+    /// actually played) to flip bookkeeping over to the next track, and kicks off preparing it.
+    private func scheduleChunk(feeder: TrackFeeder, session: Int, generation: Int, isFirstChunkOfTrack: Bool) {
+        guard generation == decodeGeneration else { return }
+        guard let chunk = feeder.readChunk(approximateSeconds: chunkDurationSeconds) else {
+            // Pathological empty/corrupt file — nothing to schedule at all for this track, so just
+            // advance past it immediately rather than leaving the queue stuck in silence forever.
+            if session == activeDecodeSession {
+                handleTrackFinishedRendering(session: session, generation: generation)
+            }
+            return
+        }
+
+        if isFirstChunkOfTrack {
+            trackStartFrames[session] = framesScheduledSoFar - (sessionStartOffsetFrames[session] ?? 0)
+        }
+        framesScheduledSoFar += AVAudioFramePosition(chunk.frameLength)
+
+        if feeder.isExhausted {
+            playerNode.scheduleBuffer(chunk, completionCallbackType: .dataRendered) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.handleTrackFinishedRendering(session: session, generation: generation)
+                }
+            }
+            prepareNextTrack(afterSession: session, generation: generation)
+        } else {
+            playerNode.scheduleBuffer(chunk, completionCallbackType: .dataConsumed) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.scheduleChunk(feeder: feeder, session: session, generation: generation, isFirstChunkOfTrack: false)
+                }
+            }
+        }
+    }
+
+    /// Schedules a track's first chunk and then, synchronously and immediately (not waiting on any
+    /// completion callback), tops up a few more right behind it — see `chunkDurationSeconds`/
+    /// `targetBufferedChunks` above for why. Used for every point a track's decode chain begins:
+    /// `startPlayback` and `prepareNextTrack`'s gapless hand-off alike.
+    private func beginScheduling(feeder: TrackFeeder, session: Int, generation: Int) {
+        scheduleChunk(feeder: feeder, session: session, generation: generation, isFirstChunkOfTrack: true)
+        var buffered = 1
+        while buffered < targetBufferedChunks, generation == decodeGeneration, !feeder.isExhausted {
+            scheduleChunk(feeder: feeder, session: session, generation: generation, isFirstChunkOfTrack: false)
+            buffered += 1
+        }
+    }
+
+    /// Kicked off the moment the current track's *last* chunk is scheduled (not yet rendered) —
+    /// resolves and decodes `queue[currentIndex + 1]` (read fresh here, so it reflects any queue
+    /// mutation made since this track started) and, once ready, schedules its first chunk right
+    /// after what's already queued. In the common case the file is already locally cached well
+    /// ahead of time via `cacheUpcomingTrack()`, so this finishes long before the current track's
+    /// remaining buffered audio actually runs out.
+    private func prepareNextTrack(afterSession session: Int, generation: Int) {
+        guard currentIndex + 1 < queue.count else { return }
+        let nextItem = queue[currentIndex + 1]
+        nextDecodeSessionId += 1
+        let nextSession = nextDecodeSessionId
+
+        Task {
+            guard let fileURL = await self.ensureLocalFile(for: nextItem) else { return }
+            guard generation == self.decodeGeneration else { return }
+
+            guard let feeder = try? TrackFeeder(fileURL: fileURL, outputFormat: self.canonicalFormat) else { return }
+            guard generation == self.decodeGeneration else { return }
+
+            self.pendingNextSession = nextSession
+            self.pendingNextItem = nextItem
+            self.beginScheduling(feeder: feeder, session: nextSession, generation: generation)
+        }
+    }
+
+    /// Fires once the just-finished track's last buffer has actually finished rendering (real
+    /// playback time) — the moment to flip every piece of bookkeeping (index, subqueue, Jellyfin
+    /// progress reporting, Now Playing info) over to the next track, matching what the engine
+    /// already gaplessly moved on to at the audio level moments earlier.
+    private func handleTrackFinishedRendering(session: Int, generation: Int) {
+        guard generation == decodeGeneration, session == activeDecodeSession else { return }
+        trackStartFrames.removeValue(forKey: session)
+        sessionStartOffsetFrames.removeValue(forKey: session)
+
+        guard currentIndex + 1 < queue.count else {
+            handleReachedEndOfQueue()
+            return
+        }
+
+        let finalPosition = currentTime
+        stopReportingSession(finalPosition: finalPosition)
+        if subqueueCount > 0 {
+            subqueueCount -= 1
+        }
+        currentIndex += 1
+        currentTime = 0
+        updateNowPlayingInfo()
+        cacheUpcomingTrack()
+
+        if let pendingSession = pendingNextSession, pendingNextItem?.Id == currentItem?.Id {
+            activeDecodeSession = pendingSession
+        } else {
+            // Not ready in time (slow network, or pre-caching disabled) — there was an audible gap
+            // here, and nothing left scheduled to continue from, so start fresh against whatever is
+            // now actually at `currentIndex`.
+            startPlayback(atQueueIndex: currentIndex, autoplay: isPlaying)
+        }
+        pendingNextSession = nil
+        pendingNextItem = nil
+
+        if isPlaying {
+            startReportingSessionIfNeeded()
+        }
+    }
+
+    /// The very last song in the queue finished playing with nothing prepared after it — unlike every
+    /// other track boundary, there's no next item for the player to fall through to, so this is the
+    /// one case that needs its own "are we still actually playing" correction.
+    private func handleReachedEndOfQueue() {
+        isPlaying = false
+        isLoadingTrack = false
+        updateNowPlayingPlaybackState()
+        stopReportingSession(finalPosition: currentTime)
+        persistPlaybackState()
+    }
+
+    /// Always returns a *local* file — decoding via `AVAudioFile` for the gapless PCM pipeline needs
+    /// random local file access, which a remote URL can't provide directly. A track that isn't
+    /// downloaded or opportunistically cached yet is fetched in full here (the same
+    /// `CacheManager.cacheTrack` used for background pre-caching, just awaited instead of fired and
+    /// forgotten) before this returns — in practice this only means an actual wait for a track
+    /// that's being played for the very first time with no lead time; anything already reached via
+    /// `cacheUpcomingTrack()`'s lookahead resolves instantly from disk.
+    private func ensureLocalFile(for item: BaseItemDto) async -> URL? {
         if let downloadedURL = await DownloadStore.shared.localFileURL(forItemId: item.Id) {
             return downloadedURL
         }
-        if let localURL = await CacheManager.shared.localFileURL(forItemId: item.Id) {
-            return localURL
+        if let cachedURL = await CacheManager.shared.localFileURL(forItemId: item.Id) {
+            return cachedURL
         }
         let bitrate = StreamingQualitySettings.shared.currentStreamingBitrateKbps()
         guard let remoteURL = JellyfinAPIClient.shared.streamURL(itemId: item.Id, maxBitrateKbps: bitrate) else { return nil }
-        cache(item, from: remoteURL)
-        return remoteURL
+        await CacheManager.shared.cacheTrack(
+            id: item.Id,
+            title: item.Name,
+            artistName: item.AlbumArtist ?? item.Artists?.first ?? "",
+            albumName: item.Album ?? "",
+            albumId: item.AlbumId,
+            durationTicks: item.RunTimeTicks ?? 0,
+            remoteURL: remoteURL
+        )
+        return await CacheManager.shared.localFileURL(forItemId: item.Id)
     }
 
     private func cacheUpcomingTrack() {
@@ -409,39 +771,6 @@ final class AudioPlayerManager: NSObject, ObservableObject {
                 durationTicks: item.RunTimeTicks ?? 0,
                 remoteURL: remoteURL
             )
-        }
-    }
-
-    private func addEndObserver(for item: AVPlayerItem) {
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { _ in
-            Task { @MainActor [weak self] in
-                self?.skipToNext()
-            }
-        }
-    }
-
-    private func removeEndObserver() {
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-        }
-        endObserver = nil
-    }
-
-    private func addPeriodicTimeObserver() {
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
-        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.currentTime = time.seconds
-                if self.isPlaying, self.currentTime - self.lastProgressReportTime >= self.progressReportInterval {
-                    self.lastProgressReportTime = self.currentTime
-                    self.reportProgress(isPaused: false)
-                }
-            }
         }
     }
 

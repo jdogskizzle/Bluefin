@@ -7,7 +7,7 @@ BUNDLE_ID = com.jdogskizzle.Bluefin
 DEVICE_BUNDLE_ID = com.jdogskizzle.app.bluefin
 BUILD_DIR = build
 
-.PHONY: build deploy test clean
+.PHONY: build deploy test clean testflight
 
 build:
 	xcodebuild \
@@ -134,3 +134,9 @@ clean:
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		clean
+
+# Bumps CFBundleVersion, archives, uploads to App Store Connect, and clears the per-build export
+# compliance flag — see scripts/testflight/release.py. Requires the App Store Connect API key at
+# ~/.appstoreconnect/private_keys (override with ASC_KEY_ID/ASC_ISSUER_ID/ASC_APP_ID/ASC_KEY_PATH).
+testflight:
+	scripts/testflight/release.sh

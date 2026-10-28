@@ -17,6 +17,12 @@ struct NowPlayingView: View {
     @State private var showDetails = false
     @State private var showRemoveDownloadConfirmation = false
     @State private var hasLyrics = false
+    /// While the user is actively dragging the scrubber, the slider reflects this instead of
+    /// `player.currentTime` — and `player.seek(to:)` is only called once, on release. Calling it on
+    /// every drag tick (the naive binding) fires a full engine restart per tick, which is far heavier
+    /// now than the old `AVPlayer.seek` and makes the scrubber feel unresponsive/broken while dragging.
+    @State private var isScrubbing = false
+    @State private var scrubTime: TimeInterval = 0
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -206,14 +212,23 @@ struct NowPlayingView: View {
             } else {
                 Slider(
                     value: Binding(
-                        get: { player.currentTime },
-                        set: { player.seek(to: $0) }
+                        get: { isScrubbing ? scrubTime : player.currentTime },
+                        set: { scrubTime = $0 }
                     ),
-                    in: 0...max(duration, 1)
+                    in: 0...max(duration, 1),
+                    onEditingChanged: { editing in
+                        if editing {
+                            scrubTime = player.currentTime
+                        }
+                        isScrubbing = editing
+                        if !editing {
+                            player.seek(to: scrubTime)
+                        }
+                    }
                 )
             }
             HStack {
-                Text(formatted(player.currentTime))
+                Text(formatted(isScrubbing ? scrubTime : player.currentTime))
                 Spacer()
                 Text(formatted(duration))
             }
