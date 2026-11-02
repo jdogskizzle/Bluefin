@@ -51,6 +51,9 @@ struct HomeView: View {
                 .padding()
                 .avoidsMiniPlayer()
             }
+            .refreshable {
+                await refreshHome()
+            }
             .navigationTitle("Home")
             .navigationDestination(for: LibraryRoute.self) { route in
                 LibraryDestinationView(route: route)
@@ -95,6 +98,15 @@ struct HomeView: View {
             guard let id = pinnedStore.pinnedPlaylistId, key == "playlists" || key == "playlistSongs:\(id)" else { return }
             Task { await loadPinnedPlaylist() }
         }
+    }
+
+    /// Pull-to-refresh: re-checks Lidarr for new releases and Ticketmaster for new concerts,
+    /// bypassing each cache's normal once-per-session guard via `force: true`. Run concurrently
+    /// since they're two independent network round trips.
+    private func refreshHome() async {
+        async let lidarr: Void = releaseCache.refresh(force: true)
+        async let concerts: Void = concertCache.refresh(force: true)
+        _ = await (lidarr, concerts)
     }
 
     private func loadPinnedPlaylist() async {

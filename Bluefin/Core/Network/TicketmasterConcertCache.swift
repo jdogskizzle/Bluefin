@@ -67,14 +67,14 @@ final class TicketmasterConcertCache: ObservableObject {
 
     private init() {}
 
-    func refresh() async {
+    func refresh(force: Bool = false) async {
         guard TicketmasterAPIClient.shared.isConnected else {
             hasLoaded = false
             rawArtistConcerts = []
             artistConcerts = []
             return
         }
-        guard !hasLoaded else { return }
+        guard force || !hasLoaded else { return }
 
         guard let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
               let allArtists = await LibraryCache.shared.items(for: "artists:\(libraryId)") else {
