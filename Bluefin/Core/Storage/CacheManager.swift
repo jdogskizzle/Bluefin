@@ -48,6 +48,27 @@ actor CacheManager {
 
     private var activeDownloads: Set<String> = []
 
+    /// Pending best-effort pre-cache downloads, run strictly one at a time by `drainPrecacheQueue()`
+    /// — `enqueuePrecache` used to just fire a separate concurrent download per upcoming track (up
+    /// to `preCacheLookahead`, 10 by default), which on a bandwidth-constrained link (e.g. a home
+    /// connection's upload speed, reached through a reverse proxy while away from home) starved
+    /// whatever track the user had just actually tapped of bandwidth, since the player now needs a
+    /// *fully downloaded* local file before a track can start (unlike the old streaming `AVPlayer`,
+    /// which only needed enough of a head start to begin playing). That's what made tapping a song
+    /// take anywhere from 30 seconds to several minutes to actually start.
+    private var precacheQueue: [PrecacheRequest] = []
+    private var isPrecacheWorkerRunning = false
+
+    private struct PrecacheRequest {
+        let id: String
+        let title: String
+        let artistName: String
+        let albumName: String
+        let albumId: String?
+        let durationTicks: Int64
+        let remoteURL: URL
+    }
+
     private var cacheDirectoryURL: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let directory = base.appendingPathComponent("AudioCache", isDirectory: true)
@@ -133,6 +154,37 @@ actor CacheManager {
         }
         try? modelContext.save()
         evictIfOverLimit()
+    }
+
+    /// Queues a track for best-effort background caching instead of downloading it immediately —
+    /// see `precacheQueue` above for why this has to stay strictly one-at-a-time rather than firing
+    /// a concurrent download per call like `cacheTrack` (used directly for whatever's actually about
+    /// to play) does.
+    func enqueuePrecache(
+        id: String, title: String, artistName: String, albumName: String, albumId: String?,
+        durationTicks: Int64, remoteURL: URL
+    ) {
+        guard localFileURL(forItemId: id) == nil, !activeDownloads.contains(id),
+            !precacheQueue.contains(where: { $0.id == id })
+        else { return }
+        precacheQueue.append(
+            PrecacheRequest(
+                id: id, title: title, artistName: artistName, albumName: albumName,
+                albumId: albumId, durationTicks: durationTicks, remoteURL: remoteURL))
+        guard !isPrecacheWorkerRunning else { return }
+        isPrecacheWorkerRunning = true
+        Task { await self.drainPrecacheQueue() }
+    }
+
+    private func drainPrecacheQueue() async {
+        while !precacheQueue.isEmpty {
+            let next = precacheQueue.removeFirst()
+            await cacheTrack(
+                id: next.id, title: next.title, artistName: next.artistName,
+                albumName: next.albumName, albumId: next.albumId,
+                durationTicks: next.durationTicks, remoteURL: next.remoteURL)
+        }
+        isPrecacheWorkerRunning = false
     }
 
     func totalCacheSizeBytes() -> Int64 {

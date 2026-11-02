@@ -777,7 +777,7 @@ final class AudioPlayerManager: NSObject, ObservableObject {
 
     private func cache(_ item: BaseItemDto, from remoteURL: URL) {
         Task.detached(priority: .utility) {
-            await CacheManager.shared.cacheTrack(
+            await CacheManager.shared.enqueuePrecache(
                 id: item.Id,
                 title: item.Name,
                 artistName: item.AlbumArtist ?? item.Artists?.first ?? "",
