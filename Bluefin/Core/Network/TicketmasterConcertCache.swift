@@ -10,7 +10,7 @@ import Foundation
 
 /// A library artist paired with their upcoming Ticketmaster tour dates — what the Home screen's
 /// "Upcoming Concerts" section and its detail view are built from.
-struct ArtistConcerts: Identifiable, Hashable {
+struct ArtistConcerts: Identifiable, Hashable, Codable {
     let artistId: String
     let artistName: String
     let events: [TicketmasterEvent]
@@ -42,6 +42,10 @@ struct ArtistConcerts: Identifiable, Hashable {
 /// session, triggered from `HomeView`) the same way `LidarrReleaseCache` fetches releases — so
 /// opening the concerts list for one artist later just reads from here instead of making its own
 /// network round trip.
+///
+/// Also persisted to disk, same reasoning as `LidarrReleaseCache`: a refresh can fail (no network at
+/// all, Ticketmaster briefly down, etc.), and without persistence that would blank "Upcoming
+/// Concerts" on every such launch even though nothing about the concerts actually changed.
 @MainActor
 final class TicketmasterConcertCache: ObservableObject {
     static let shared = TicketmasterConcertCache()
@@ -57,7 +61,7 @@ final class TicketmasterConcertCache: ObservableObject {
     /// re-runs `refresh()` every time it reappears — SwiftUI can tear down and rebuild an inactive
     /// tab's view hierarchy, which restarts `.task` modifiers even though nothing actually changed —
     /// so without this guard, switching tabs and back would silently re-fetch every artist from
-    /// Ticketmaster again on every visit.
+    /// Ticketmaster again on every visit. `refresh(force:)` bypasses it for an explicit pull-to-refresh.
     private var hasLoaded = false
 
     /// Ticketmaster's free-tier API key enforces roughly 5 requests/second — searching every library
@@ -65,36 +69,38 @@ final class TicketmasterConcertCache: ObservableObject {
     /// caps how many run concurrently instead.
     private static let maxConcurrentRequests = 4
 
-    private init() {}
+    private static let defaultsKey = "com.bluefin.ticketmasterConcertCache"
+
+    private init() {
+        loadPersisted()
+    }
 
     func refresh(force: Bool = false) async {
         guard TicketmasterAPIClient.shared.isConnected else {
             hasLoaded = false
             rawArtistConcerts = []
             artistConcerts = []
+            clearPersisted()
             return
         }
         guard force || !hasLoaded else { return }
 
+        // Each of these just means "nothing to fetch yet" (library not synced, every artist
+        // blacklisted) rather than an actual failure, but either way there's nothing new to show —
+        // leave whatever's already on screen (persisted or from an earlier refresh) rather than
+        // blanking it.
         guard let libraryId = JellyfinAPIClient.shared.selectedLibraryId,
               let allArtists = await LibraryCache.shared.items(for: "artists:\(libraryId)") else {
-            rawArtistConcerts = []
-            artistConcerts = []
             return
         }
         // Skipped here, not just filtered out below, so a blacklisted artist doesn't cost part of
         // the free tier's daily request quota on every refresh.
         let blacklistedIds = TicketmasterBlacklistStore.shared.blacklistedArtistIds
         let artists = allArtists.filter { !blacklistedIds.contains($0.Id) }
-        guard !artists.isEmpty else {
-            rawArtistConcerts = []
-            artistConcerts = []
-            return
-        }
+        guard !artists.isEmpty else { return }
 
         hasLoaded = true
-        rawArtistConcerts = []
-        artistConcerts = []
+        var fetchedConcerts: [ArtistConcerts] = []
         var iterator = artists.makeIterator()
         await withTaskGroup(of: ArtistConcerts?.self) { group in
             for _ in 0..<min(Self.maxConcurrentRequests, artists.count) {
@@ -104,14 +110,16 @@ final class TicketmasterConcertCache: ObservableObject {
             }
             while let result = await group.next() {
                 if let result {
-                    rawArtistConcerts.append(result)
-                    applyRegionFilter()
+                    fetchedConcerts.append(result)
                 }
                 if let artist = iterator.next() {
                     group.addTask { await Self.fetchConcerts(for: artist) }
                 }
             }
         }
+        rawArtistConcerts = fetchedConcerts
+        applyRegionFilter()
+        persist()
     }
 
     /// Recomputes `artistConcerts` from `rawArtistConcerts` against the currently selected region —
@@ -143,6 +151,23 @@ final class TicketmasterConcertCache: ObservableObject {
     func removeLocally(artistId: String) {
         rawArtistConcerts.removeAll { $0.artistId == artistId }
         artistConcerts.removeAll { $0.artistId == artistId }
+        persist()
+    }
+
+    private func loadPersisted() {
+        guard let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
+              let persisted = try? JSONDecoder().decode([ArtistConcerts].self, from: data) else { return }
+        rawArtistConcerts = persisted
+        applyRegionFilter()
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(rawArtistConcerts) else { return }
+        UserDefaults.standard.set(data, forKey: Self.defaultsKey)
+    }
+
+    private func clearPersisted() {
+        UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
     }
 
     private static func matches(_ event: TicketmasterEvent, region: TicketmasterRegion?) -> Bool {

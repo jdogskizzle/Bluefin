@@ -42,7 +42,7 @@ enum TicketmasterError: Error, LocalizedError {
     }
 }
 
-struct TicketmasterEvent: Identifiable, Hashable {
+struct TicketmasterEvent: Identifiable, Hashable, Codable {
     let id: String
     let name: String
     let date: Date?
