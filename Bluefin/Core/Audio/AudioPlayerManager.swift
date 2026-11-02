@@ -270,6 +270,12 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         if isPlaying, currentTime - lastProgressReportTime >= progressReportInterval {
             lastProgressReportTime = currentTime
             reportProgress(isPaused: false)
+            // Piggybacks on the same throttle as a periodic safety-net resync for the lock screen's
+            // extrapolated playhead — it's normally kept correct by the explicit pushes at every
+            // seek/pause/resume/track-boundary, but this catches any drift between those points
+            // (e.g. iOS's own extrapolation vs. the engine's actual sample clock) before it becomes
+            // noticeable.
+            updateNowPlayingPlaybackState()
         }
     }
 
@@ -486,6 +492,10 @@ final class AudioPlayerManager: NSObject, ObservableObject {
     }
 
     func pause() {
+        // Captures the exact pause-point position before stopping the node — `playerTime(forNodeTime:)`
+        // can go nil once the node isn't playing, so this has to happen first or `currentTime` (and
+        // what gets frozen on the lock screen below) is left showing a stale, pre-pause value.
+        refreshCurrentTime()
         playerNode.pause()
         isPlaying = false
         // A deliberate pause should hide the loading animation immediately, rather than waiting on
@@ -586,6 +596,11 @@ final class AudioPlayerManager: NSObject, ObservableObject {
                 self.startReportingSessionIfNeeded()
             }
             self.isLoadingTrack = false
+            // `updateNowPlayingInfo()` before this Task started pushed the rate/elapsed time as of
+            // *before* this load — e.g. starting a fresh queue while nothing was playing yet pushes
+            // rate 0, and nothing afterward ever corrected it to 1 once playback actually began. This
+            // re-syncs the lock screen to the state that's actually true now that loading is done.
+            self.updateNowPlayingPlaybackState()
         }
 
         cacheUpcomingTrack()
@@ -870,14 +885,15 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         loadArtwork(for: item)
     }
 
-    private func updateNowPlayingElapsedTime() {
-        guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else { return }
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-    }
-
+    /// The lock screen extrapolates its playhead from whatever `elapsedPlaybackTime` was last pushed
+    /// plus `playbackRate` and the wall-clock time since — it does *not* keep polling `currentTime`
+    /// on its own. So every time the rate changes (pause/resume), the elapsed value has to be
+    /// refreshed in the same write; pushing the rate alone (as this used to) freezes/resumes the
+    /// extrapolation from whatever stale elapsed value happened to be in the dict, which is exactly
+    /// what made the lock screen's play/pause state and playhead drift out of sync with real playback.
     private func updateNowPlayingPlaybackState() {
         guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else { return }
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
