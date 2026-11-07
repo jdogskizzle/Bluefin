@@ -68,6 +68,15 @@ struct PlaylistDetailView: View {
         }
     }
 
+    /// Gets the first song of a fresh shuffle order downloading before the user even taps play,
+    /// mirroring `AlbumDetailView`'s precache — skipped if this playlist is already playing, since
+    /// that song doesn't need to compete for bandwidth with itself.
+    private func precacheFirstShuffledSongIfNeeded() {
+        guard let first = displayedItems.shuffled().first,
+              !AudioPlayerManager.shared.isCurrentQueue(displayedItems) else { return }
+        AudioPlayerManager.shared.precacheTrack(first)
+    }
+
     private func releaseDate(for song: BaseItemDto) -> Date {
         albumReleaseDates[song.AlbumId ?? ""] ?? .distantPast
     }
@@ -155,6 +164,7 @@ struct PlaylistDetailView: View {
         }
         .task {
             await viewModel.load()
+            precacheFirstShuffledSongIfNeeded()
         }
         .task {
             await loadAlbumReleaseDates()

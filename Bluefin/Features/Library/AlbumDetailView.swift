@@ -115,10 +115,20 @@ struct AlbumDetailView: View {
         )
         .task {
             await viewModel.load()
+            precacheFirstSongIfNeeded()
         }
         .task {
             await resolveArtist()
         }
+    }
+
+    /// Gets the first song's download started before the user even taps play, so opening an album
+    /// feels instant — skipped if this album is already the one playing, since that song is either
+    /// already cached or actively streaming and doesn't need to compete for bandwidth.
+    private func precacheFirstSongIfNeeded() {
+        guard let first = viewModel.items.first,
+              !AudioPlayerManager.shared.isCurrentQueue(viewModel.items) else { return }
+        AudioPlayerManager.shared.precacheTrack(first)
     }
 
     private var header: some View {

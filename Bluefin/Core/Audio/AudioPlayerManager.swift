@@ -762,6 +762,25 @@ final class AudioPlayerManager: NSObject, ObservableObject {
         return await CacheManager.shared.localFileURL(forItemId: item.Id)
     }
 
+    /// Best-effort check for whether `items` is what's currently loaded into the queue — used by
+    /// `AlbumDetailView`/`PlaylistDetailView` to skip a redundant precache of the first song when the
+    /// album/playlist being opened is already playing. Compared by id set rather than exact order,
+    /// since the queue may have been shuffled relative to the source list.
+    func isCurrentQueue(_ items: [BaseItemDto]) -> Bool {
+        guard !queue.isEmpty, queue.count == items.count else { return false }
+        return Set(queue.map(\.Id)) == Set(items.map(\.Id))
+    }
+
+    /// Best-effort background precache of a single track, used when opening an album or playlist's
+    /// detail page (its first song, or first shuffle-order song) before playback has actually
+    /// started. Goes through the same serialized `enqueuePrecache` queue as `cacheUpcomingTrack`, so
+    /// it never competes with an in-flight on-demand download.
+    func precacheTrack(_ item: BaseItemDto) {
+        let bitrate = StreamingQualitySettings.shared.currentStreamingBitrateKbps()
+        guard let remoteURL = JellyfinAPIClient.shared.streamURL(itemId: item.Id, maxBitrateKbps: bitrate) else { return }
+        cache(item, from: remoteURL)
+    }
+
     private func cacheUpcomingTrack() {
         let lookahead = CacheManager.preCacheLookahead
         guard lookahead > 0 else { return }
