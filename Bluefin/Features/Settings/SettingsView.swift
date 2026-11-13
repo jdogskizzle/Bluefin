@@ -158,6 +158,11 @@ struct SettingsView: View {
                     }
                 }
                 NavigationLink {
+                    EQDeviceProfilesView()
+                } label: {
+                    Text("Auto EQ by Device")
+                }
+                NavigationLink {
                     QualitySettingsView()
                 } label: {
                     Text("Quality")
