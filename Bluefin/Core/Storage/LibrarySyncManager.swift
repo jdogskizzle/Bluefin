@@ -92,7 +92,7 @@ final class LibrarySyncManager: ObservableObject {
             let albums = try await JellyfinAPIClient.shared.fetchItems(
                 parentId: libraryId,
                 includeItemTypes: "MusicAlbum",
-                fields: "PremiereDate,Genres"
+                fields: "PremiereDate,Genres,DateCreated"
             )
             await LibraryCache.shared.store(albums, for: "albums:\(libraryId)")
 
