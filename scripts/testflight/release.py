@@ -79,6 +79,7 @@ def export_and_upload() -> None:
         "-authenticationKeyPath", str(KEY_PATH),
         "-authenticationKeyID", KEY_ID,
         "-authenticationKeyIssuerID", ISSUER_ID,
+        "-allowProvisioningUpdates",
     ])
 
 
