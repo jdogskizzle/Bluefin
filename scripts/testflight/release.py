@@ -152,6 +152,15 @@ def wait_for_processing(version: str) -> dict:
             print(f"  (transient error polling: {e}, retrying)")
             build = None
         if build and build["processingState"] == "VALID":
+            # `internalBuildState` lags slightly behind `processingState` turning VALID — it reads
+            # as None/null for a short window right after, before Apple settles it to its real value
+            # (e.g. MISSING_EXPORT_COMPLIANCE). Returning on that transient None meant `main()`'s
+            # "nothing to clear" branch fired on a build that actually still needed clearing, leaving
+            # it invisible in TestFlight until someone noticed and cleared it by hand.
+            if build["internalBuildState"] is None:
+                print("  VALID, but internal state not settled yet...")
+                time.sleep(POLL_INTERVAL_SECONDS)
+                continue
             print(f"  build {build['id']} is VALID (internal state: {build['internalBuildState']})")
             return build
         if build and build["processingState"] == "INVALID":
