@@ -58,7 +58,7 @@ struct MiniPlayerView: View {
             .foregroundStyle(.primary)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .glassEffect(.regular, in: .capsule)
+            .miniPlayerBackground()
             .contentShape(Rectangle())
             .onTapGesture {
                 showNowPlaying = true
@@ -67,6 +67,24 @@ struct MiniPlayerView: View {
                 NowPlayingView()
             }
         }
+    }
+}
+
+private struct MiniPlayerBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: .capsule)
+        } else {
+            content.background(.regularMaterial, in: Capsule())
+        }
+    }
+}
+
+private extension View {
+    /// `.glassEffect` (Liquid Glass) is iOS 26+ only; pre-26 falls back to a translucent
+    /// material capsule so the app still supports iOS 17, SwiftData's own minimum.
+    func miniPlayerBackground() -> some View {
+        modifier(MiniPlayerBackgroundModifier())
     }
 }
 
