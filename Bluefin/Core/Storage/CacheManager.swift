@@ -46,7 +46,13 @@ actor CacheManager {
         }
     }
 
-    private var activeDownloads: Set<String> = []
+    /// In-flight download, keyed by item id — a concurrent caller for the same id (e.g. the
+    /// automatic first-song precache started by opening an album page, racing an immediate tap to
+    /// play that same song) awaits this existing task instead of bailing out: `cacheTrack` used to
+    /// just check a `Set<String>` and return early if present, so the second caller gave up without
+    /// ever getting a local file, silently failing to start playback until a second tap (by then the
+    /// first download had usually finished).
+    private var activeDownloads: [String: Task<Void, Never>] = [:]
 
     /// Pending best-effort pre-cache downloads, run strictly one at a time by `drainPrecacheQueue()`
     /// — `enqueuePrecache` used to just fire a separate concurrent download per upcoming track (up
@@ -127,10 +133,26 @@ actor CacheManager {
         id: String, title: String, artistName: String, albumName: String, albumId: String?,
         durationTicks: Int64, remoteURL: URL
     ) async {
-        guard localFileURL(forItemId: id) == nil, !activeDownloads.contains(id) else { return }
-        activeDownloads.insert(id)
-        defer { activeDownloads.remove(id) }
+        if let inFlight = activeDownloads[id] {
+            await inFlight.value
+            return
+        }
+        guard localFileURL(forItemId: id) == nil else { return }
 
+        let task = Task {
+            await self.performDownload(
+                id: id, title: title, artistName: artistName, albumName: albumName,
+                albumId: albumId, durationTicks: durationTicks, remoteURL: remoteURL)
+        }
+        activeDownloads[id] = task
+        await task.value
+        activeDownloads[id] = nil
+    }
+
+    private func performDownload(
+        id: String, title: String, artistName: String, albumName: String, albumId: String?,
+        durationTicks: Int64, remoteURL: URL
+    ) async {
         guard let (path, size) = await downloadFile(id: id, from: remoteURL) else { return }
 
         if let track = fetchTrack(id: id) {
@@ -164,7 +186,7 @@ actor CacheManager {
         id: String, title: String, artistName: String, albumName: String, albumId: String?,
         durationTicks: Int64, remoteURL: URL
     ) {
-        guard localFileURL(forItemId: id) == nil, !activeDownloads.contains(id),
+        guard localFileURL(forItemId: id) == nil, activeDownloads[id] == nil,
             !precacheQueue.contains(where: { $0.id == id })
         else { return }
         precacheQueue.append(
