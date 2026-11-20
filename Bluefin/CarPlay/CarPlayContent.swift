@@ -7,6 +7,7 @@
 
 #if canImport(CarPlay)
 import CarPlay
+import ImageIO
 import UIKit
 
 /// Builds the CarPlay template tree — the root list ("Playlists", "Recently Added") and the song
@@ -143,11 +144,29 @@ enum CarPlayContent {
 
     private static func artworkImage(forItemId id: String) async -> UIImage? {
         if let data = await ImageCache.shared.data(itemId: id, imageType: "Primary") {
-            return UIImage(data: data)
+            return thumbnail(from: data)
         }
         await ImageCache.shared.fetchAndStore(itemId: id)
         guard let data = await ImageCache.shared.data(itemId: id, imageType: "Primary") else { return nil }
-        return UIImage(data: data)
+        return thumbnail(from: data)
+    }
+
+    /// Jellyfin's "Primary" images are full-resolution cover art (often 1000px+). CPListItem.image
+    /// is shown at roughly 60pt, and handing CarPlay.app a raw full-size `UIImage(data:)` over XPC
+    /// crashed CarPlay's own iconservices placeholder-generation path on every launch. Decoding
+    /// straight to a small thumbnail via ImageIO — rather than fully decoding the source and resizing
+    /// after — avoids ever materializing the oversized image at all.
+    private static func thumbnail(from data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 180,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
     }
 
     private static func notSyncedItem() -> CPListItem {
