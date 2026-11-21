@@ -17,20 +17,22 @@ final class BluefinCarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
     private var interfaceController: CPInterfaceController?
     private var libraryChangeObserver: AnyCancellable?
 
+    // Audio apps must use these window-less variants; the `to:`/`from: CPWindow` overloads are only
+    // called for navigation apps, so implementing those left CarPlay with no root template.
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
-        didConnect interfaceController: CPInterfaceController,
-        to window: CPWindow
+        didConnect interfaceController: CPInterfaceController
     ) {
         self.interfaceController = interfaceController
+        interfaceController.setRootTemplate(
+            CPListTemplate(title: "Bluefin", sections: []), animated: false, completion: nil)
         Task { await showRoot() }
         observeLibraryChanges()
     }
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
-        didDisconnect interfaceController: CPInterfaceController,
-        from window: CPWindow
+        didDisconnectInterfaceController interfaceController: CPInterfaceController
     ) {
         libraryChangeObserver = nil
         self.interfaceController = nil
